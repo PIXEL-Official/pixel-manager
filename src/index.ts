@@ -223,7 +223,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
               
               listContent += `**${idx}.** ${statusEmoji} **${user.username}**${warningEmoji} ${voiceEmoji}\n`;
               listContent += `    📅 Kick Rule 기간: ${kickRulePeriod}\n`;
-              listContent += `    ⏱️ 누적 활동 시간: **${formatMinutes(user.actualTotalMinutes)}** / 30분\n`;
+              listContent += `    ⏱️ 총 누적 활동 시간: **${formatMinutes(user.actualTotalMinutes)}**\n`;
               listContent += `    🎤 마지막 음성 접속: ${formatDate(user.lastVoiceTime)}\n`;
               listContent += `    💬 마지막 채팅: ${formatDate(user.lastMessageTime)}\n`;
               

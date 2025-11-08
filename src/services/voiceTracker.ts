@@ -123,14 +123,14 @@ export class VoiceTracker {
     if (user) {
       const newTotalMinutes = user.total_minutes + durationMinutes;
       
-      // 30분 달성 체크 - 달성 시 referenceDate 갱신 및 total_minutes 리셋
+      // 30분 달성 체크 - 달성 시 referenceDate만 갱신 (total_minutes는 계속 누적)
       if (newTotalMinutes >= 30 && user.total_minutes < 30) {
-        logger.info(`User ${username} achieved 30 minutes! Resetting reference date.`);
+        logger.info(`User ${username} achieved 30 minutes! Updating reference date.`);
         await userRepository.updateUser(userId, guildId, {
-          total_minutes: 0, // 리셋
+          total_minutes: newTotalMinutes, // 계속 누적 (리셋 안 함)
           week_start: now.toISOString(), // 새로운 referenceDate
           last_voice_time: now.toISOString(),
-          warning_sent: false, // 경고도 리셋
+          warning_sent: false, // 경고는 리셋
         });
       } else {
         await userRepository.updateUser(userId, guildId, {
