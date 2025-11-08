@@ -55,6 +55,36 @@ pnpm build
 pnpm start
 ```
 
+## 클라우드 배포 (Railway, Render 등)
+
+### 빌드 명령어 설정
+클라우드 서비스의 설정에서 다음과 같이 설정하세요:
+
+**Build Command:**
+```bash
+pnpm install && pnpm build
+```
+
+**Start Command:**
+```bash
+pnpm start
+```
+
+### 환경 변수 설정
+클라우드 서비스의 환경 변수 설정에서 다음을 추가하세요:
+- `DISCORD_TOKEN`
+- `GUILD_ID`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+
+### Docker 사용 시
+Dockerfile이 포함되어 있습니다. Docker를 지원하는 클라우드 서비스에서는:
+
+```bash
+docker build -t pixel-manager .
+docker run --env-file .env pixel-manager
+```
+
 ## 기능
 
 ### 자동 스터디 관리
