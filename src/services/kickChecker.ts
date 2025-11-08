@@ -1,5 +1,6 @@
 import { Client, GuildMember } from 'discord.js';
 import { userRepository } from '../repositories/userRepository';
+import { VoiceTracker } from './voiceTracker';
 import {
   hasSevenDaysPassed,
   isWarningTime,
@@ -13,10 +14,12 @@ import { logger } from '../utils/logger';
 export class KickChecker {
   private client: Client;
   private guildId: string;
+  private voiceTracker: VoiceTracker;
 
-  constructor(client: Client, guildId: string) {
+  constructor(client: Client, guildId: string, voiceTracker: VoiceTracker) {
     this.client = client;
     this.guildId = guildId;
+    this.voiceTracker = voiceTracker;
   }
 
   /**
@@ -216,6 +219,60 @@ ${username}님, 안녕하세요.
       warned: usersWarned,
       kicked: usersKicked,
     };
+  }
+
+  /**
+   * 모든 유저의 상세 정보 조회 (pagination용)
+   */
+  async getDetailedUserList(): Promise<Array<{
+    userId: string;
+    username: string;
+    totalMinutes: number;
+    currentSessionMinutes: number;
+    actualTotalMinutes: number; // DB 시간 + 현재 접속 시간
+    status: string;
+    daysUntilDeadline: number;
+    meetsRequirement: boolean;
+    referenceDate: Date;
+    lastVoiceTime: string | null;
+    lastMessageTime: string | null;
+    isCurrentlyInVoice: boolean;
+  }>> {
+    const users = await userRepository.getUsersToCheck(this.guildId);
+    
+    return users.map(user => {
+      const referenceDate = user.last_voice_time
+        ? parseISODate(user.last_voice_time)
+        : parseISODate(user.joined_at);
+
+      // 현재 접속 중인 시간 계산
+      const currentSessionMinutes = this.voiceTracker.getCurrentSessionMinutes(user.user_id);
+      const actualTotalMinutes = user.total_minutes + currentSessionMinutes;
+
+      const daysUntilDeadline = getDaysUntilDeadline(referenceDate);
+      const meetsRequirement = meetsWeeklyRequirement(actualTotalMinutes);
+
+      return {
+        userId: user.user_id,
+        username: user.username,
+        totalMinutes: user.total_minutes,
+        currentSessionMinutes,
+        actualTotalMinutes,
+        status: user.status,
+        daysUntilDeadline,
+        meetsRequirement,
+        referenceDate,
+        lastVoiceTime: user.last_voice_time,
+        lastMessageTime: user.last_message_time,
+        isCurrentlyInVoice: currentSessionMinutes > 0,
+      };
+    }).sort((a, b) => {
+      // 정렬: 조건 미달 > 경고 > 정상
+      if (a.meetsRequirement !== b.meetsRequirement) {
+        return a.meetsRequirement ? 1 : -1;
+      }
+      return a.actualTotalMinutes - b.actualTotalMinutes;
+    });
   }
 }
 

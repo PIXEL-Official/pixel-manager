@@ -196,6 +196,27 @@ export class UserRepository {
     const user = await this.getUserById(userId, guildId);
     return user !== null;
   }
+
+  /**
+   * 마지막 메시지 시간 업데이트
+   */
+  async updateLastMessageTime(userId: string, guildId: string): Promise<boolean> {
+    const { error } = await supabase
+      .from('users')
+      .update({ 
+        last_message_time: new Date().toISOString(),
+        updated_at: new Date().toISOString() 
+      })
+      .eq('user_id', userId)
+      .eq('guild_id', guildId);
+
+    if (error) {
+      console.error('Error updating last message time:', error);
+      return false;
+    }
+
+    return true;
+  }
 }
 
 export const userRepository = new UserRepository();

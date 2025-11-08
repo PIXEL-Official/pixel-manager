@@ -153,6 +153,7 @@ export class VoiceTracker {
       username: username,
       joined_at: joinedAt.toISOString(),
       last_voice_time: null,
+      last_message_time: null,
       total_minutes: 0,
       week_start: weekStart.toISOString(),
       warning_sent: false,
@@ -202,6 +203,25 @@ export class VoiceTracker {
    */
   getActiveSession(userId: string): Date | undefined {
     return activeVoiceSessions.get(userId);
+  }
+
+  /**
+   * 특정 유저의 현재 접속 중인 시간(분) 계산
+   * 접속 중이 아니면 0 반환
+   */
+  getCurrentSessionMinutes(userId: string): number {
+    const joinTime = activeVoiceSessions.get(userId);
+    if (!joinTime) return 0;
+
+    const now = new Date();
+    return calculateMinutesBetween(joinTime, now);
+  }
+
+  /**
+   * 모든 활성 세션 맵 반환 (현재 접속 중인 유저들)
+   */
+  getAllActiveSessions(): Map<string, Date> {
+    return activeVoiceSessions;
   }
 }
 

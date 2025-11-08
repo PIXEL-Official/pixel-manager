@@ -4,6 +4,7 @@ export interface User {
   username: string;
   joined_at: string; // ISO timestamp
   last_voice_time: string | null; // ISO timestamp
+  last_message_time: string | null; // ISO timestamp
   total_minutes: number;
   week_start: string; // ISO timestamp
   warning_sent: boolean;
@@ -51,3 +52,12 @@ export interface VoiceChannel {
   updated_at?: string;
 }
 
+export interface ChatChannel {
+  id?: number;
+  guild_id: string;
+  channel_id: string;
+  channel_name: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}

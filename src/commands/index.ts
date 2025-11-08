@@ -27,33 +27,38 @@ export const commands = {
 
   addchannel: new SlashCommandBuilder()
     .setName('addchannel')
-    .setDescription('음성 채널을 추적 목록에 추가')
+    .setDescription('채널을 추적 목록에 추가 (음성/채팅 자동 감지)')
     .addChannelOption(option =>
       option
         .setName('channel')
-        .setDescription('추가할 음성 채널')
+        .setDescription('추가할 채널')
         .setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   removechannel: new SlashCommandBuilder()
     .setName('removechannel')
-    .setDescription('음성 채널을 추적 목록에서 제거')
+    .setDescription('채널을 추적 목록에서 제거')
     .addChannelOption(option =>
       option
         .setName('channel')
-        .setDescription('제거할 음성 채널')
+        .setDescription('제거할 채널')
         .setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   listchannels: new SlashCommandBuilder()
     .setName('listchannels')
-    .setDescription('추적 중인 모든 채널 목록 보기')
+    .setDescription('추적 중인 모든 채널 목록 보기 (음성/채팅)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   help: new SlashCommandBuilder()
     .setName('help')
     .setDescription('사용 가능한 명령어 목록 표시'),
+
+  sync: new SlashCommandBuilder()
+    .setName('sync')
+    .setDescription('서버의 모든 멤버를 데이터베이스에 동기화 (초기 설정용)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 };
 

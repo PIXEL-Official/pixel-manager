@@ -70,10 +70,24 @@ pnpm start
 - `/help` - 사용 가능한 명령어 목록 표시
 
 #### 관리자 전용 명령어
+- `/sync` - 서버의 모든 멤버를 데이터베이스에 등록 (초기 설정 시 1회 실행 필수)
 - `/check` - 수동으로 유저 체크 및 강퇴 실행
+  - 한 페이지당 20명씩 리스트 형식으로 표시
+  - 각 유저별 정보:
+    - **닉네임** (조건 충족 ✅/미달 ❌, 경고 ⚠️, 접속상태 🔴/⚫)
+    - 📅 **활동 측정 기간**: 측정 시작일 ~ 현재 (MM-DD 형식)
+    - ⏱️ **누적 활동 시간**: 실시간 계산 (현재 접속 시간 포함)
+    - 🎤 **마지막 음성 접속 시간**
+    - 💬 **마지막 채팅 시간**
+  - 페이지네이션으로 모든 유저 확인 가능
 - `/status` - 현재 음성 채널 접속 상태 확인
-- `/addchannel` - 음성 채널을 추적 목록에 추가
-- `/removechannel` - 음성 채널을 추적 목록에서 제거
+
+**📋 채널 관리 (자동 감지):**
+- `/addchannel` - 채널을 추적 목록에 추가
+  - 음성 채널 🎤: 음성 접속 시간 추적
+  - 텍스트 채널 💬: 채팅 메시지 활동 추적
+  - 포럼 채널 📋: 포럼 내 모든 스레드의 메시지 활동 추적
+- `/removechannel` - 채널을 추적 목록에서 제거
 - `/listchannels` - 추적 중인 모든 채널 목록 보기
 
 ## Supabase 설정
@@ -81,7 +95,10 @@ pnpm start
 1. [Supabase](https://supabase.com/)에서 새 프로젝트 생성
 2. SQL Editor에서 스크립트 실행:
    - **신규 설치**: `src/scripts/createTables.sql` 파일 전체 실행
-   - **기존 DB에 voice_channels 테이블만 추가**: `src/scripts/addVoiceChannelsTable.sql` 파일 실행
+   - **기존 DB 업데이트**:
+     - `voice_channels` 테이블 추가: `src/scripts/addVoiceChannelsTable.sql` 실행
+     - `chat_channels` 테이블 추가: `src/scripts/addChatChannelsTable.sql` 실행
+     - `last_message_time` 컬럼 추가: `src/scripts/addLastMessageTime.sql` 실행
 3. Settings > API에서 Project URL과 anon public key를 복사하여 `.env`에 입력
 
 ## 프로젝트 구조
@@ -90,6 +107,8 @@ pnpm start
 pixel-manager/
 ├── src/
 │   ├── index.ts              # 메인 엔트리 포인트
+│   ├── commands/
+│   │   └── index.ts          # 슬래시 명령어 정의
 │   ├── database/
 │   │   └── supabase.ts       # Supabase 클라이언트
 │   ├── models/
@@ -97,16 +116,21 @@ pixel-manager/
 │   ├── repositories/
 │   │   ├── userRepository.ts         # 유저 데이터 관리
 │   │   ├── voiceSessionRepository.ts # 세션 데이터 관리
-│   │   └── voiceChannelRepository.ts # 음성 채널 관리
+│   │   ├── voiceChannelRepository.ts # 음성 채널 관리
+│   │   └── chatChannelRepository.ts  # 채팅 채널 관리
 │   ├── services/
 │   │   ├── voiceTracker.ts   # 음성 채널 추적
 │   │   ├── kickChecker.ts    # 자동 강퇴 로직
 │   │   └── statsService.ts   # 통계 서비스
 │   ├── utils/
 │   │   ├── dateHelper.ts     # 날짜 계산 유틸
-│   │   └── logger.ts         # 로깅 시스템
+│   │   ├── logger.ts         # 로깅 시스템
+│   │   └── deployCommands.ts # 슬래시 명령어 배포
 │   └── scripts/
-│       └── createTables.sql  # DB 테이블 생성 SQL
+│       ├── createTables.sql           # DB 테이블 생성 SQL (신규)
+│       ├── addVoiceChannelsTable.sql  # voice_channels 추가 (기존 DB)
+│       ├── addChatChannelsTable.sql   # chat_channels 추가 (기존 DB)
+│       └── addLastMessageTime.sql     # last_message_time 추가 (기존 DB)
 ├── dist/                     # 빌드 결과물
 ├── .env                      # 환경 변수 (git에 포함되지 않음)
 ├── .env.example              # 환경 변수 예시
@@ -117,10 +141,21 @@ pixel-manager/
 
 ## 작동 원리
 
-1. **신규 멤버 가입**: 서버에 새로운 멤버가 가입하면 자동으로 DB에 등록
-2. **음성 채널 관리**: 관리자가 `/addchannel` 명령어로 추적할 음성 채널을 추가합니다. 여러 채널을 동시에 추적할 수 있습니다.
-3. **음성 채널 추적**: 등록된 모든 음성 채널의 입장/퇴장 시간을 실시간으로 추적
-4. **주간 시간 계산**: 각 유저의 주간 누적 음성 채널 시간 자동 계산
+1. **초기 설정**: 
+   - 봇 설치 후 **반드시 `/sync` 명령어를 1회 실행**하여 기존 멤버들을 DB에 등록
+   - 이후 신규 멤버는 서버 가입 시 자동으로 DB에 등록됨
+2. **채널 관리 (자동 감지)**: 
+   - `/addchannel` 명령어로 채널을 추가하면 **채널 타입을 자동으로 감지**합니다
+   - **음성 채널** (🎤): 음성 접속 시간을 추적
+   - **텍스트 채널** (💬): 메시지 활동을 추적 (마지막 채팅 시간 기록)
+   - **포럼 채널** (📋): 포럼 내 모든 스레드의 메시지 활동을 추적
+   - 여러 채널을 동시에 추적 가능
+3. **실시간 추적**:
+   - **음성 채널**: 등록된 모든 음성 채널의 입장/퇴장 시간을 실시간으로 추적
+   - **채팅 활동**: 등록된 텍스트 채널 및 포럼 채널(스레드 포함)에서의 메시지 마지막 전송 시간을 기록
+4. **시간 계산**: 
+   - **주간 누적 시간**: 각 유저의 주간 음성 채널 시간을 자동 계산
+   - **실시간 반영**: `/check` 명령어 실행 시 현재 접속 중인 시간도 포함하여 계산
 5. **1시간마다 체크**:
    - 6일 경과 + 30분 미달 유저에게 경고 DM 발송
    - 7일 경과 + 30분 미달 유저 자동 강퇴
@@ -128,6 +163,7 @@ pixel-manager/
 
 ## 주의사항
 
+- **⚠️ 중요**: 봇 설치 후 반드시 `/sync` 명령어를 1회 실행하여 기존 서버 멤버를 DB에 등록해야 합니다
 - 봇이 유저에게 DM을 보내려면 해당 유저가 서버에서 DM을 허용해야 합니다
 - 봇에게 멤버 강퇴 권한(KICK_MEMBERS)이 필요합니다
 - 채널 추가는 `/addchannel` 명령어로 관리하며, 여러 채널을 동시에 추적할 수 있습니다

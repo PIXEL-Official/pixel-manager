@@ -1,11 +1,25 @@
-import { Client, GatewayIntentBits, Events, ChatInputCommandInteraction } from 'discord.js';
+import { 
+  Client, 
+  GatewayIntentBits, 
+  Events, 
+  ChatInputCommandInteraction,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType,
+  ChannelType,
+} from 'discord.js';
 import dotenv from 'dotenv';
 import cron from 'node-cron';
 import { VoiceTracker } from './services/voiceTracker';
 import { KickChecker } from './services/kickChecker';
 import { voiceChannelRepository } from './repositories/voiceChannelRepository';
+import { chatChannelRepository } from './repositories/chatChannelRepository';
+import { userRepository } from './repositories/userRepository';
 import { logger } from './utils/logger';
 import { deployCommands } from './utils/deployCommands';
+import { formatMinutes } from './utils/dateHelper';
 
 // Load environment variables
 dotenv.config();
@@ -46,8 +60,8 @@ client.once(Events.ClientReady, async (readyClient) => {
   // Deploy slash commands
   await deployCommands(readyClient.user.id, guildId, token);
 
-  // Initialize kick checker
-  kickChecker = new KickChecker(client, guildId);
+  // Initialize kick checker with voiceTracker
+  kickChecker = new KickChecker(client, guildId, voiceTracker);
 
   // Initialize active voice sessions for users already in tracked channels
   try {
@@ -94,6 +108,34 @@ client.on(Events.GuildMemberAdd, async (member) => {
   }
 });
 
+// Track messages for last message time
+client.on(Events.MessageCreate, async (message) => {
+  // Ignore bot messages
+  if (message.author.bot) return;
+  
+  // Only track messages in the configured guild
+  if (message.guildId !== guildId) return;
+
+  // Only track messages in tracked chat channels
+  if (!message.channelId) return;
+
+  try {
+    // 채널 자체가 추적 대상인지 확인
+    let isTracked = await chatChannelRepository.isTrackedChannel(message.channelId, message.guildId);
+    
+    // 포럼 스레드의 경우, 부모 포럼 채널이 추적 대상인지 확인
+    if (!isTracked && message.channel && 'isThread' in message.channel && message.channel.isThread() && message.channel.parentId) {
+      isTracked = await chatChannelRepository.isTrackedChannel(message.channel.parentId, message.guildId);
+    }
+    
+    if (!isTracked) return;
+
+    await userRepository.updateLastMessageTime(message.author.id, message.guildId);
+  } catch (error) {
+    // Silent fail - don't spam logs for message tracking
+  }
+});
+
 // Handle slash commands
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
@@ -109,13 +151,157 @@ client.on(Events.InteractionCreate, async (interaction) => {
       case 'check':
         await interaction.deferReply();
         try {
+          // 먼저 체크 실행
           const result = await kickChecker.manualCheck();
-          await interaction.editReply(
-            `✅ 체크 완료!\n\n` +
-            `- 확인한 유저: ${result.total}명\n` +
-            `- 경고 발송: ${result.warned}명\n` +
-            `- 강퇴 처리: ${result.kicked}명`
-          );
+          
+          // 상세 유저 목록 가져오기
+          const userList = await kickChecker.getDetailedUserList();
+          
+          if (userList.length === 0) {
+            await interaction.editReply('✅ 체크 완료! 현재 추적 중인 유저가 없습니다.');
+            return;
+          }
+
+          // Pagination 설정 - 한 페이지당 20명씩 표시
+          const itemsPerPage = 20;
+          const totalPages = Math.ceil(userList.length / itemsPerPage);
+          let currentPage = 0;
+
+          // 시간 포맷팅 헬퍼
+          const formatDate = (isoString: string | null): string => {
+            if (!isoString) return '없음';
+            const date = new Date(isoString);
+            const now = new Date();
+            const diffMs = now.getTime() - date.getTime();
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMins / 60);
+            const diffDays = Math.floor(diffHours / 24);
+
+            if (diffMins < 1) return '방금';
+            if (diffMins < 60) return `${diffMins}분 전`;
+            if (diffHours < 24) return `${diffHours}시간 전`;
+            return `${diffDays}일 전`;
+          };
+
+          // Embed 생성 함수
+          const createEmbed = async (page: number) => {
+            const start = page * itemsPerPage;
+            const end = Math.min(start + itemsPerPage, userList.length);
+            const pageUsers = userList.slice(start, end);
+            
+            const embed = new EmbedBuilder()
+              .setColor(0x5865F2)
+              .setTitle('📊 유저 활동 체크 결과')
+              .setDescription(
+                `✅ **체크 완료!**\n` +
+                `확인: ${result.total}명 | 경고: ${result.warned}명 | 강퇴: ${result.kicked}명\n` +
+                `페이지: ${page + 1}/${totalPages} (${start + 1}-${end}/${userList.length}명)`
+              )
+              .setTimestamp();
+
+            // 각 유저를 리스트 형식으로 추가
+            let listContent = '';
+            for (let i = 0; i < pageUsers.length; i++) {
+              const user = pageUsers[i];
+              const idx = start + i + 1;
+              
+              const statusEmoji = user.meetsRequirement ? '✅' : '❌';
+              const warningEmoji = user.status === 'warned' ? ' ⚠️' : '';
+              const voiceEmoji = user.isCurrentlyInVoice ? '🔴' : '⚫';
+              
+              // 활동 측정 기간 계산 (referenceDate부터 현재까지)
+              const startDate = new Date(user.referenceDate);
+              const now = new Date();
+              const formatDateShort = (date: Date) => {
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${month}-${day}`;
+              };
+              const activityPeriod = `${formatDateShort(startDate)} ~ ${formatDateShort(now)}`;
+              
+              listContent += `**${idx}.** ${statusEmoji} **${user.username}**${warningEmoji} ${voiceEmoji}\n`;
+              listContent += `    📅 활동 측정 기간: ${activityPeriod}\n`;
+              listContent += `    ⏱️ 누적 활동 시간: **${formatMinutes(user.actualTotalMinutes)}** / 30분\n`;
+              listContent += `    🎤 마지막 음성 접속: ${formatDate(user.lastVoiceTime)}\n`;
+              listContent += `    💬 마지막 채팅: ${formatDate(user.lastMessageTime)}\n`;
+              
+              // 구분선 (마지막 항목 제외)
+              if (i < pageUsers.length - 1) {
+                listContent += '\n';
+              }
+            }
+
+            embed.addFields({
+              name: '\u200B',
+              value: listContent,
+              inline: false,
+            });
+
+            return embed;
+          };
+
+          // 버튼 생성 함수
+          const createButtons = (page: number) => {
+            return new ActionRowBuilder<ButtonBuilder>()
+              .addComponents(
+                new ButtonBuilder()
+                  .setCustomId('prev')
+                  .setLabel('◀ 이전')
+                  .setStyle(ButtonStyle.Primary)
+                  .setDisabled(page === 0),
+                new ButtonBuilder()
+                  .setCustomId('next')
+                  .setLabel('다음 ▶')
+                  .setStyle(ButtonStyle.Primary)
+                  .setDisabled(page === totalPages - 1)
+              );
+          };
+
+          // 초기 메시지 전송
+          const message = await interaction.editReply({
+            embeds: [await createEmbed(currentPage)],
+            components: totalPages > 1 ? [createButtons(currentPage)] : [],
+          });
+
+          // 버튼 인터랙션 처리
+          if (totalPages > 1) {
+            const collector = message.createMessageComponentCollector({
+              componentType: ComponentType.Button,
+              time: 300000, // 5분
+            });
+
+            collector.on('collect', async (buttonInteraction) => {
+              if (buttonInteraction.user.id !== interaction.user.id) {
+                await buttonInteraction.reply({
+                  content: '❌ 이 버튼은 명령어를 실행한 사용자만 사용할 수 있습니다.',
+                  ephemeral: true,
+                });
+                return;
+              }
+
+              if (buttonInteraction.customId === 'prev') {
+                currentPage = Math.max(0, currentPage - 1);
+              } else if (buttonInteraction.customId === 'next') {
+                currentPage = Math.min(totalPages - 1, currentPage + 1);
+              }
+
+              await buttonInteraction.update({
+                embeds: [await createEmbed(currentPage)],
+                components: [createButtons(currentPage)],
+              });
+            });
+
+            collector.on('end', async () => {
+              try {
+                await interaction.editReply({
+                  embeds: [await createEmbed(currentPage)],
+                  components: [],
+                });
+              } catch (error) {
+                // 메시지가 삭제된 경우 무시
+              }
+            });
+          }
         } catch (error) {
           await interaction.editReply('❌ 체크 중 오류가 발생했습니다.');
           logger.error('Manual check failed', error);
@@ -138,32 +324,59 @@ client.on(Events.InteractionCreate, async (interaction) => {
       case 'addchannel':
         const addChannel = interaction.options.getChannel('channel', true);
         
-        // Type guard to check if it's a voice-based channel
-        if (!('isVoiceBased' in addChannel) || !addChannel.isVoiceBased()) {
+        // 채널 타입을 자동으로 감지
+        const isVoice = 'isVoiceBased' in addChannel && addChannel.isVoiceBased();
+        const isText = 'isTextBased' in addChannel && addChannel.isTextBased();
+        const isForum = addChannel.type === ChannelType.GuildForum;
+
+        if (!isVoice && !isText && !isForum) {
           await interaction.reply({ 
-            content: '❌ 음성 채널만 추가할 수 있습니다.', 
+            content: '❌ 음성 채널, 텍스트 채널 또는 포럼 채널만 추가할 수 있습니다.', 
             ephemeral: true
           });
           return;
         }
 
         try {
-          const result = await voiceChannelRepository.addChannel({
-            guild_id: guildId,
-            channel_id: addChannel.id,
-            channel_name: addChannel.name || `Channel ${addChannel.id}`,
-            is_active: true,
-          });
-
-          if (result) {
-            voiceTracker.addTrackedChannel(addChannel.id);
-            await interaction.reply(`✅ 음성 채널 <#${addChannel.id}>가 추적 목록에 추가되었습니다.`);
-            logger.info(`Added voice channel: ${addChannel.name} (${addChannel.id})`);
-          } else {
-            await interaction.reply({ 
-              content: '❌ 이미 추적 목록에 있는 채널입니다.', 
-              ephemeral: true
+          if (isVoice) {
+            // 🎤 음성 채널 추가
+            const result = await voiceChannelRepository.addChannel({
+              guild_id: guildId,
+              channel_id: addChannel.id,
+              channel_name: addChannel.name || `Channel ${addChannel.id}`,
+              is_active: true,
             });
+
+            if (result) {
+              voiceTracker.addTrackedChannel(addChannel.id);
+              await interaction.reply(`✅ 🎤 음성 채널 <#${addChannel.id}>이(가) 추적 목록에 추가되었습니다.`);
+              logger.info(`Added voice channel: ${addChannel.name} (${addChannel.id})`);
+            } else {
+              await interaction.reply({ 
+                content: '❌ 이미 추적 목록에 있는 음성 채널입니다.', 
+                ephemeral: true
+              });
+            }
+          } else {
+            // 💬 텍스트 채널 또는 📋 포럼 채널 추가
+            const result = await chatChannelRepository.addChannel({
+              guild_id: guildId,
+              channel_id: addChannel.id,
+              channel_name: addChannel.name || `Channel ${addChannel.id}`,
+              is_active: true,
+            });
+
+            if (result) {
+              const emoji = isForum ? '📋' : '💬';
+              const type = isForum ? '포럼' : '채팅';
+              await interaction.reply(`✅ ${emoji} ${type} 채널 <#${addChannel.id}>이(가) 추적 목록에 추가되었습니다.${isForum ? '\n포럼 내 모든 스레드의 메시지가 추적됩니다.' : ''}`);
+              logger.info(`Added ${type.toLowerCase()} channel: ${addChannel.name} (${addChannel.id})`);
+            } else {
+              await interaction.reply({ 
+                content: `❌ 이미 추적 목록에 있는 ${isForum ? '포럼' : '채팅'} 채널입니다.`, 
+                ephemeral: true
+              });
+            }
           }
         } catch (error) {
           await interaction.reply({ 
@@ -178,12 +391,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const removeChannel = interaction.options.getChannel('channel', true);
         
         try {
-          const success = await voiceChannelRepository.removeChannel(removeChannel.id, guildId);
+          // 음성 채널과 채팅 채널 모두 시도
+          const voiceSuccess = await voiceChannelRepository.removeChannel(removeChannel.id, guildId);
+          const chatSuccess = await chatChannelRepository.removeChannel(removeChannel.id, guildId);
           
-          if (success) {
+          if (voiceSuccess) {
             voiceTracker.removeTrackedChannel(removeChannel.id);
-            await interaction.reply(`✅ 음성 채널 <#${removeChannel.id}>가 추적 목록에서 제거되었습니다.`);
+            await interaction.reply(`✅ 🎤 음성 채널 <#${removeChannel.id}>이(가) 추적 목록에서 제거되었습니다.`);
             logger.info(`Removed voice channel: ${removeChannel.id}`);
+          } else if (chatSuccess) {
+            await interaction.reply(`✅ 💬 채팅 채널 <#${removeChannel.id}>이(가) 추적 목록에서 제거되었습니다.`);
+            logger.info(`Removed chat channel: ${removeChannel.id}`);
           } else {
             await interaction.reply({ 
               content: '❌ 채널 제거에 실패했습니다. 추적 목록에 없는 채널입니다.', 
@@ -201,27 +419,83 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       case 'listchannels':
         try {
-          const allChannels = await voiceChannelRepository.getAllChannels(guildId);
+          const voiceChannels = await voiceChannelRepository.getAllChannels(guildId);
+          const chatChannels = await chatChannelRepository.getAllChannels(guildId);
           
-          if (allChannels.length === 0) {
+          if (voiceChannels.length === 0 && chatChannels.length === 0) {
             await interaction.reply('📋 추적 중인 채널이 없습니다. `/addchannel`로 채널을 추가하세요.');
             return;
           }
 
-          let channelList = '📋 **추적 채널 목록**\n\n';
+          let channelList = '📋 **추적 중인 채널 목록**\n\n';
           
-          allChannels.forEach((ch, index) => {
-            const status = ch.is_active ? '✅ 활성' : '❌ 비활성';
-            channelList += `${index + 1}. <#${ch.channel_id}> - ${status}\n`;
-          });
+          // 음성 채널 목록
+          if (voiceChannels.length > 0) {
+            channelList += '**🎤 음성 채널**\n';
+            voiceChannels.forEach((ch, index) => {
+              const status = ch.is_active ? '✅' : '❌';
+              channelList += `${index + 1}. ${status} <#${ch.channel_id}>\n`;
+            });
+            channelList += '\n';
+          }
 
-          await interaction.reply(channelList);
+          // 채팅 채널 목록
+          if (chatChannels.length > 0) {
+            channelList += '**💬 채팅 채널**\n';
+            chatChannels.forEach((ch, index) => {
+              const status = ch.is_active ? '✅' : '❌';
+              channelList += `${index + 1}. ${status} <#${ch.channel_id}>\n`;
+            });
+          }
+
+          await interaction.reply(channelList.trim());
         } catch (error) {
           await interaction.reply({ 
             content: '❌ 채널 목록 조회 중 오류가 발생했습니다.', 
             ephemeral: true
           });
           logger.error('Error listing channels', error);
+        }
+        break;
+
+      case 'sync':
+        await interaction.deferReply();
+        try {
+          const guild = await client.guilds.fetch(guildId);
+          const members = await guild.members.fetch();
+          
+          let added = 0;
+          let skipped = 0;
+          
+          for (const [memberId, member] of members) {
+            // 봇 제외
+            if (member.user.bot) {
+              skipped++;
+              continue;
+            }
+            
+            // DB에 추가 시도 (이미 존재하면 스킵됨)
+            await voiceTracker.addNewMember(
+              memberId,
+              guildId,
+              member.user.username,
+              member.joinedAt || new Date()
+            );
+            
+            added++;
+          }
+          
+          await interaction.editReply(
+            `✅ 서버 멤버 동기화 완료!\n\n` +
+            `- 총 멤버: ${members.size}명\n` +
+            `- 처리됨: ${added}명\n` +
+            `- 스킵됨 (봇): ${skipped}명\n\n` +
+            `이제 \`/check\` 명령어를 다시 실행해보세요!`
+          );
+          logger.info(`Synced ${added} members to database`);
+        } catch (error) {
+          await interaction.editReply('❌ 멤버 동기화 중 오류가 발생했습니다.');
+          logger.error('Sync failed', error);
         }
         break;
 
@@ -233,10 +507,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
 \`/help\` - 이 도움말 표시
 
 **관리자 전용 명령어:**
+\`/sync\` - 서버의 모든 멤버를 DB에 등록 (초기 설정 시 1회 실행)
 \`/check\` - 수동으로 유저 체크 실행
 \`/status\` - 현재 봇 상태 확인
-\`/addchannel\` - 음성 채널을 추적 목록에 추가
-\`/removechannel\` - 음성 채널을 추적 목록에서 제거
+
+**📋 채널 관리 (자동 감지):**
+\`/addchannel\` - 채널을 추적 목록에 추가 (음성 🎤 / 텍스트 💬 / 포럼 📋 자동 구분)
+\`/removechannel\` - 채널을 추적 목록에서 제거
 \`/listchannels\` - 추적 중인 모든 채널 목록 보기
 `;
         await interaction.reply(helpMessage.trim());
