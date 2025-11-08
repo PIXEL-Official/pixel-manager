@@ -72,17 +72,22 @@ client.once(Events.ClientReady, async (readyClient) => {
     logger.error('Error initializing active voice sessions', error);
   }
 
-  // Schedule hourly checks (every hour at :00)
+  // Schedule hourly checks (every hour at :00) - KST timezone
   cron.schedule('0 * * * *', async () => {
-    logger.info('Running scheduled user check');
+    const now = new Date();
+    const kstTime = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+    const kstTimeStr = kstTime.toISOString().replace('T', ' ').substring(0, 19);
+    logger.info(`Running scheduled user check at ${kstTimeStr} KST`);
     try {
       await kickChecker.checkAndKickUsers();
     } catch (error) {
       logger.error('Error during scheduled check', error);
     }
+  }, {
+    timezone: 'Asia/Seoul'
   });
 
-  logger.info('Cron job scheduled: Hourly user checks at :00');
+  logger.info('Cron job scheduled: Hourly user checks at :00 (KST timezone)');
 });
 
 // Track voice state changes
