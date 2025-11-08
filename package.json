@@ -1,0 +1,29 @@
+{
+  "name": "pixel-manager",
+  "version": "1.0.0",
+  "description": "Discord bot built with TypeScript",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "watch": "tsc -w"
+  },
+  "keywords": ["discord", "bot", "typescript"],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@8.15.0",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.3",
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "@types/node-cron": "^3.0.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
+
