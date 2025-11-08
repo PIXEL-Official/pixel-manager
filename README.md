@@ -23,7 +23,7 @@ SUPABASE_URL=your_supabase_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-**참고:** 음성 채널 ID는 더 이상 환경변수로 설정하지 않습니다. 대신 `!addchannel` 명령어를 통해 Supabase에서 관리됩니다.
+**참고:** 음성 채널 ID는 더 이상 환경변수로 설정하지 않습니다. 대신 `/addchannel` 슬래시 명령어를 통해 Supabase에서 관리됩니다.
 
 ## 봇 토큰 발급 방법
 
@@ -63,25 +63,25 @@ pnpm start
 - 1시간마다 자동으로 유저 활동 체크
 - 음성 채널 입장/퇴장 시간 자동 추적 및 기록
 
-### 관리자 명령어
+### 슬래시 명령어
 
-- `!ping` - 봇 응답 확인
-- `!check` - 수동으로 유저 체크 및 강퇴 실행
-- `!status` - 현재 음성 채널 접속 상태 확인
-- `!addchannel <채널_ID>` - 음성 채널을 추적 목록에 추가
-- `!removechannel <채널_ID>` - 음성 채널을 추적 목록에서 제거
-- `!listchannels` - 추적 중인 모든 채널 목록 보기
-- `!help` - 사용 가능한 명령어 목록 표시
+#### 일반 명령어
+- `/ping` - 봇 응답 확인
+- `/help` - 사용 가능한 명령어 목록 표시
 
-### 일반 명령어
-
-- `!ping` - Pong! 응답
-- `!help` - 도움말 표시
+#### 관리자 전용 명령어
+- `/check` - 수동으로 유저 체크 및 강퇴 실행
+- `/status` - 현재 음성 채널 접속 상태 확인
+- `/addchannel` - 음성 채널을 추적 목록에 추가
+- `/removechannel` - 음성 채널을 추적 목록에서 제거
+- `/listchannels` - 추적 중인 모든 채널 목록 보기
 
 ## Supabase 설정
 
 1. [Supabase](https://supabase.com/)에서 새 프로젝트 생성
-2. SQL Editor에서 `src/scripts/createTables.sql` 파일 실행
+2. SQL Editor에서 스크립트 실행:
+   - **신규 설치**: `src/scripts/createTables.sql` 파일 전체 실행
+   - **기존 DB에 voice_channels 테이블만 추가**: `src/scripts/addVoiceChannelsTable.sql` 파일 실행
 3. Settings > API에서 Project URL과 anon public key를 복사하여 `.env`에 입력
 
 ## 프로젝트 구조
@@ -118,7 +118,7 @@ pixel-manager/
 ## 작동 원리
 
 1. **신규 멤버 가입**: 서버에 새로운 멤버가 가입하면 자동으로 DB에 등록
-2. **음성 채널 관리**: 관리자가 `!addchannel` 명령어로 추적할 음성 채널을 추가합니다. 여러 채널을 동시에 추적할 수 있습니다.
+2. **음성 채널 관리**: 관리자가 `/addchannel` 명령어로 추적할 음성 채널을 추가합니다. 여러 채널을 동시에 추적할 수 있습니다.
 3. **음성 채널 추적**: 등록된 모든 음성 채널의 입장/퇴장 시간을 실시간으로 추적
 4. **주간 시간 계산**: 각 유저의 주간 누적 음성 채널 시간 자동 계산
 5. **1시간마다 체크**:
@@ -130,7 +130,7 @@ pixel-manager/
 
 - 봇이 유저에게 DM을 보내려면 해당 유저가 서버에서 DM을 허용해야 합니다
 - 봇에게 멤버 강퇴 권한(KICK_MEMBERS)이 필요합니다
-- 채널 추가는 `!addchannel` 명령어로 관리하며, 여러 채널을 동시에 추적할 수 있습니다
+- 채널 추가는 `/addchannel` 명령어로 관리하며, 여러 채널을 동시에 추적할 수 있습니다
 - 1시간마다 자동 체크가 실행되므로 봇을 24시간 가동해야 합니다
 - 봇 시작 시 Supabase에 등록된 활성 채널들만 추적합니다
 

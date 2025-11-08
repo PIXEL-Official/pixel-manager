@@ -1,10 +1,11 @@
-import { Client, GatewayIntentBits, Events } from 'discord.js';
+import { Client, GatewayIntentBits, Events, ChatInputCommandInteraction } from 'discord.js';
 import dotenv from 'dotenv';
 import cron from 'node-cron';
 import { VoiceTracker } from './services/voiceTracker';
 import { KickChecker } from './services/kickChecker';
 import { voiceChannelRepository } from './repositories/voiceChannelRepository';
 import { logger } from './utils/logger';
+import { deployCommands } from './utils/deployCommands';
 
 // Load environment variables
 dotenv.config();
@@ -41,6 +42,9 @@ let kickChecker: KickChecker;
 // When the client is ready, run this code (only once)
 client.once(Events.ClientReady, async (readyClient) => {
   logger.success(`Ready! Logged in as ${readyClient.user.tag}`);
+
+  // Deploy slash commands
+  await deployCommands(readyClient.user.id, guildId, token);
 
   // Initialize kick checker
   kickChecker = new KickChecker(client, guildId);
@@ -90,159 +94,173 @@ client.on(Events.GuildMemberAdd, async (member) => {
   }
 });
 
-// Admin commands
-client.on(Events.MessageCreate, async (message) => {
-  // Ignore messages from bots
-  if (message.author.bot) return;
+// Handle slash commands
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
 
-  // Check if user is admin (has ADMINISTRATOR permission)
-  const isAdmin = message.member?.permissions.has('Administrator');
+  const { commandName } = interaction;
 
-  // Simple ping command
-  if (message.content === '!ping') {
-    await message.reply('Pong! 🏓');
-  }
+  try {
+    switch (commandName) {
+      case 'ping':
+        await interaction.reply('🏓 Pong!');
+        break;
 
-  // Manual check command (admin only)
-  if (message.content === '!check' && isAdmin) {
-    await message.reply('⏳ 수동 체크를 시작합니다...');
-    try {
-      const result = await kickChecker.manualCheck();
-      await message.reply(
-        `✅ 체크 완료!\n\n` +
-        `- 확인한 유저: ${result.total}명\n` +
-        `- 경고 발송: ${result.warned}명\n` +
-        `- 강퇴 처리: ${result.kicked}명`
-      );
-    } catch (error) {
-      await message.reply('❌ 체크 중 오류가 발생했습니다.');
-      logger.error('Manual check failed', error);
-    }
-  }
+      case 'check':
+        await interaction.deferReply();
+        try {
+          const result = await kickChecker.manualCheck();
+          await interaction.editReply(
+            `✅ 체크 완료!\n\n` +
+            `- 확인한 유저: ${result.total}명\n` +
+            `- 경고 발송: ${result.warned}명\n` +
+            `- 강퇴 처리: ${result.kicked}명`
+          );
+        } catch (error) {
+          await interaction.editReply('❌ 체크 중 오류가 발생했습니다.');
+          logger.error('Manual check failed', error);
+        }
+        break;
 
-  // Status command (admin only)
-  if (message.content === '!status' && isAdmin) {
-    const activeCount = voiceTracker.getActiveSessionCount();
-    const channels = await voiceChannelRepository.getActiveChannels(guildId);
-    const channelList = channels.map(ch => `<#${ch.channel_id}>`).join(', ') || '없음';
-    
-    await message.reply(
-      `📊 **현재 상태**\n\n` +
-      `- 현재 음성 채널 접속 중: ${activeCount}명\n` +
-      `- 추적 중인 채널: ${channelList}\n` +
-      `- 총 추적 채널 수: ${channels.length}개`
-    );
-  }
+      case 'status':
+        const activeCount = voiceTracker.getActiveSessionCount();
+        const channels = await voiceChannelRepository.getActiveChannels(guildId);
+        const channelList = channels.map(ch => `<#${ch.channel_id}>`).join(', ') || '없음';
+        
+        await interaction.reply(
+          `📊 **현재 상태**\n\n` +
+          `- 현재 음성 채널 접속 중: ${activeCount}명\n` +
+          `- 추적 중인 채널: ${channelList}\n` +
+          `- 총 추적 채널 수: ${channels.length}개`
+        );
+        break;
 
-  // Add channel command (admin only)
-  if (message.content.startsWith('!addchannel') && isAdmin) {
-    const args = message.content.split(' ');
-    if (args.length < 2) {
-      await message.reply('❌ 사용법: `!addchannel <채널_ID>`');
-      return;
-    }
+      case 'addchannel':
+        const addChannel = interaction.options.getChannel('channel', true);
+        
+        // Type guard to check if it's a voice-based channel
+        if (!('isVoiceBased' in addChannel) || !addChannel.isVoiceBased()) {
+          await interaction.reply({ 
+            content: '❌ 음성 채널만 추가할 수 있습니다.', 
+            ephemeral: true
+          });
+          return;
+        }
 
-    const channelId = args[1].replace(/[<>#]/g, ''); // Remove channel mention formatting
-    
-    try {
-      const channel = await message.guild?.channels.fetch(channelId);
-      
-      if (!channel || !channel.isVoiceBased()) {
-        await message.reply('❌ 유효한 음성 채널 ID가 아닙니다.');
-        return;
-      }
+        try {
+          const result = await voiceChannelRepository.addChannel({
+            guild_id: guildId,
+            channel_id: addChannel.id,
+            channel_name: addChannel.name || `Channel ${addChannel.id}`,
+            is_active: true,
+          });
 
-      const result = await voiceChannelRepository.addChannel({
-        guild_id: guildId,
-        channel_id: channelId,
-        channel_name: channel.name,
-        is_active: true,
-      });
+          if (result) {
+            voiceTracker.addTrackedChannel(addChannel.id);
+            await interaction.reply(`✅ 음성 채널 <#${addChannel.id}>가 추적 목록에 추가되었습니다.`);
+            logger.info(`Added voice channel: ${addChannel.name} (${addChannel.id})`);
+          } else {
+            await interaction.reply({ 
+              content: '❌ 이미 추적 목록에 있는 채널입니다.', 
+              ephemeral: true
+            });
+          }
+        } catch (error) {
+          await interaction.reply({ 
+            content: '❌ 채널 추가 중 오류가 발생했습니다.', 
+            ephemeral: true
+          });
+          logger.error('Error adding channel', error);
+        }
+        break;
 
-      if (result) {
-        voiceTracker.addTrackedChannel(channelId);
-        await message.reply(`✅ 음성 채널 <#${channelId}>가 추적 목록에 추가되었습니다.`);
-        logger.info(`Added voice channel: ${channel.name} (${channelId})`);
-      } else {
-        await message.reply('❌ 이미 추적 목록에 있는 채널입니다.');
-      }
-    } catch (error) {
-      await message.reply('❌ 채널 추가 중 오류가 발생했습니다.');
-      logger.error('Error adding channel', error);
-    }
-  }
+      case 'removechannel':
+        const removeChannel = interaction.options.getChannel('channel', true);
+        
+        try {
+          const success = await voiceChannelRepository.removeChannel(removeChannel.id, guildId);
+          
+          if (success) {
+            voiceTracker.removeTrackedChannel(removeChannel.id);
+            await interaction.reply(`✅ 음성 채널 <#${removeChannel.id}>가 추적 목록에서 제거되었습니다.`);
+            logger.info(`Removed voice channel: ${removeChannel.id}`);
+          } else {
+            await interaction.reply({ 
+              content: '❌ 채널 제거에 실패했습니다. 추적 목록에 없는 채널입니다.', 
+              ephemeral: true
+            });
+          }
+        } catch (error) {
+          await interaction.reply({ 
+            content: '❌ 채널 제거 중 오류가 발생했습니다.', 
+            ephemeral: true
+          });
+          logger.error('Error removing channel', error);
+        }
+        break;
 
-  // Remove channel command (admin only)
-  if (message.content.startsWith('!removechannel') && isAdmin) {
-    const args = message.content.split(' ');
-    if (args.length < 2) {
-      await message.reply('❌ 사용법: `!removechannel <채널_ID>`');
-      return;
-    }
+      case 'listchannels':
+        try {
+          const allChannels = await voiceChannelRepository.getAllChannels(guildId);
+          
+          if (allChannels.length === 0) {
+            await interaction.reply('📋 추적 중인 채널이 없습니다. `/addchannel`로 채널을 추가하세요.');
+            return;
+          }
 
-    const channelId = args[1].replace(/[<>#]/g, '');
-    
-    try {
-      const success = await voiceChannelRepository.removeChannel(channelId, guildId);
-      
-      if (success) {
-        voiceTracker.removeTrackedChannel(channelId);
-        await message.reply(`✅ 음성 채널 <#${channelId}>가 추적 목록에서 제거되었습니다.`);
-        logger.info(`Removed voice channel: ${channelId}`);
-      } else {
-        await message.reply('❌ 채널 제거에 실패했습니다. 채널 ID를 확인해주세요.');
-      }
-    } catch (error) {
-      await message.reply('❌ 채널 제거 중 오류가 발생했습니다.');
-      logger.error('Error removing channel', error);
-    }
-  }
+          let channelList = '📋 **추적 채널 목록**\n\n';
+          
+          allChannels.forEach((ch, index) => {
+            const status = ch.is_active ? '✅ 활성' : '❌ 비활성';
+            channelList += `${index + 1}. <#${ch.channel_id}> - ${status}\n`;
+          });
 
-  // List channels command (admin only)
-  if (message.content === '!listchannels' && isAdmin) {
-    try {
-      const channels = await voiceChannelRepository.getAllChannels(guildId);
-      
-      if (channels.length === 0) {
-        await message.reply('📋 추적 중인 채널이 없습니다. `!addchannel <채널_ID>`로 채널을 추가하세요.');
-        return;
-      }
+          await interaction.reply(channelList);
+        } catch (error) {
+          await interaction.reply({ 
+            content: '❌ 채널 목록 조회 중 오류가 발생했습니다.', 
+            ephemeral: true
+          });
+          logger.error('Error listing channels', error);
+        }
+        break;
 
-      let channelList = '📋 **추적 채널 목록**\n\n';
-      
-      channels.forEach((ch, index) => {
-        const status = ch.is_active ? '✅ 활성' : '❌ 비활성';
-        channelList += `${index + 1}. <#${ch.channel_id}> - ${status}\n`;
-      });
-
-      await message.reply(channelList);
-    } catch (error) {
-      await message.reply('❌ 채널 목록 조회 중 오류가 발생했습니다.');
-      logger.error('Error listing channels', error);
-    }
-  }
-
-  // Help command
-  if (message.content === '!help') {
-    let helpMessage = `
+      case 'help':
+        const helpMessage = `
 📚 **사용 가능한 명령어**
 
-\`!ping\` - 봇 응답 확인
-\`!help\` - 이 도움말 표시
-`;
+\`/ping\` - 봇 응답 확인
+\`/help\` - 이 도움말 표시
 
-    if (isAdmin) {
-      helpMessage += `
 **관리자 전용 명령어:**
-\`!check\` - 수동으로 유저 체크 실행
-\`!status\` - 현재 봇 상태 확인
-\`!addchannel <채널_ID>\` - 음성 채널을 추적 목록에 추가
-\`!removechannel <채널_ID>\` - 음성 채널을 추적 목록에서 제거
-\`!listchannels\` - 추적 중인 모든 채널 목록 보기
+\`/check\` - 수동으로 유저 체크 실행
+\`/status\` - 현재 봇 상태 확인
+\`/addchannel\` - 음성 채널을 추적 목록에 추가
+\`/removechannel\` - 음성 채널을 추적 목록에서 제거
+\`/listchannels\` - 추적 중인 모든 채널 목록 보기
 `;
-    }
+        await interaction.reply(helpMessage.trim());
+        break;
 
-    await message.reply(helpMessage.trim());
+      default:
+        await interaction.reply({ 
+          content: '❌ 알 수 없는 명령어입니다.', 
+          ephemeral: true
+        });
+    }
+  } catch (error) {
+    logger.error('Error handling interaction', error);
+    
+    const errorMessage = { 
+      content: '❌ 명령어 실행 중 오류가 발생했습니다.', 
+      ephemeral: true
+    };
+    
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(errorMessage);
+    } else {
+      await interaction.reply(errorMessage);
+    }
   }
 });
 
@@ -251,10 +269,16 @@ client.on(Events.Error, (error) => {
   logger.error('Discord client error', error);
 });
 
-process.on('unhandledRejection', (error) => {
+process.on('unhandledRejection', (error: any) => {
+  console.error('❌ Unhandled promise rejection:');
+  console.error(error);
   logger.error('Unhandled promise rejection', error);
 });
 
 // Login to Discord with your client's token
-client.login(token);
+client.login(token).catch((error) => {
+  console.error('❌ Failed to login to Discord:');
+  console.error(error);
+  process.exit(1);
+});
 
