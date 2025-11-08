@@ -209,18 +209,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
               const warningEmoji = user.status === 'warned' ? ' ⚠️' : '';
               const voiceEmoji = user.isCurrentlyInVoice ? '🔴' : '⚫';
               
-              // 활동 측정 기간 계산 (referenceDate부터 현재까지)
+              // Kick Rule 기간 계산 (referenceDate부터 7일 후까지)
+              // referenceDate = 마지막으로 30분 달성한 시점
               const startDate = new Date(user.referenceDate);
-              const now = new Date();
+              const deadlineDate = new Date(startDate);
+              deadlineDate.setDate(deadlineDate.getDate() + 7);
               const formatDateShort = (date: Date) => {
                 const month = String(date.getMonth() + 1).padStart(2, '0');
                 const day = String(date.getDate()).padStart(2, '0');
                 return `${month}-${day}`;
               };
-              const activityPeriod = `${formatDateShort(startDate)} ~ ${formatDateShort(now)}`;
+              const kickRulePeriod = `${formatDateShort(startDate)} ~ ${formatDateShort(deadlineDate)}`;
               
               listContent += `**${idx}.** ${statusEmoji} **${user.username}**${warningEmoji} ${voiceEmoji}\n`;
-              listContent += `    📅 활동 측정 기간: ${activityPeriod}\n`;
+              listContent += `    📅 Kick Rule 기간: ${kickRulePeriod}\n`;
               listContent += `    ⏱️ 누적 활동 시간: **${formatMinutes(user.actualTotalMinutes)}** / 30분\n`;
               listContent += `    🎤 마지막 음성 접속: ${formatDate(user.lastVoiceTime)}\n`;
               listContent += `    💬 마지막 채팅: ${formatDate(user.lastMessageTime)}\n`;

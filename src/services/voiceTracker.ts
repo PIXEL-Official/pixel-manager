@@ -122,10 +122,22 @@ export class VoiceTracker {
     const user = await userRepository.getUserById(userId, guildId);
     if (user) {
       const newTotalMinutes = user.total_minutes + durationMinutes;
-      await userRepository.updateUser(userId, guildId, {
-        total_minutes: newTotalMinutes,
-        last_voice_time: now.toISOString(),
-      });
+      
+      // 30분 달성 체크 - 달성 시 referenceDate 갱신 및 total_minutes 리셋
+      if (newTotalMinutes >= 30 && user.total_minutes < 30) {
+        logger.info(`User ${username} achieved 30 minutes! Resetting reference date.`);
+        await userRepository.updateUser(userId, guildId, {
+          total_minutes: 0, // 리셋
+          week_start: now.toISOString(), // 새로운 referenceDate
+          last_voice_time: now.toISOString(),
+          warning_sent: false, // 경고도 리셋
+        });
+      } else {
+        await userRepository.updateUser(userId, guildId, {
+          total_minutes: newTotalMinutes,
+          last_voice_time: now.toISOString(),
+        });
+      }
 
       logger.voiceLeave(userId, username, channelId, durationMinutes);
       logger.info(`User ${username} total minutes this week: ${newTotalMinutes}`);
