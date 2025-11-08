@@ -167,20 +167,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const totalPages = Math.ceil(userList.length / itemsPerPage);
           let currentPage = 0;
 
-          // 시간 포맷팅 헬퍼
+          // KST 변환 헬퍼
+          const toKST = (date: Date) => {
+            // UTC 시간에 9시간 추가
+            return new Date(date.getTime() + (9 * 60 * 60 * 1000));
+          };
+
+          // 시간 포맷팅 헬퍼 (YYYY.MM.dd HH:mm KST)
           const formatDate = (isoString: string | null): string => {
             if (!isoString) return '없음';
-            const date = new Date(isoString);
-            const now = new Date();
-            const diffMs = now.getTime() - date.getTime();
-            const diffMins = Math.floor(diffMs / 60000);
-            const diffHours = Math.floor(diffMins / 60);
-            const diffDays = Math.floor(diffHours / 24);
-
-            if (diffMins < 1) return '방금';
-            if (diffMins < 60) return `${diffMins}분 전`;
-            if (diffHours < 24) return `${diffHours}시간 전`;
-            return `${diffDays}일 전`;
+            const utcDate = new Date(isoString);
+            const kstDate = toKST(utcDate);
+            
+            const year = kstDate.getFullYear();
+            const month = String(kstDate.getMonth() + 1).padStart(2, '0');
+            const day = String(kstDate.getDate()).padStart(2, '0');
+            const hours = String(kstDate.getHours()).padStart(2, '0');
+            const minutes = String(kstDate.getMinutes()).padStart(2, '0');
+            
+            return `${year}.${month}.${day} ${hours}:${minutes}`;
           };
 
           // Embed 생성 함수
@@ -214,12 +219,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
               const startDate = new Date(user.referenceDate);
               const deadlineDate = new Date(startDate);
               deadlineDate.setDate(deadlineDate.getDate() + 7);
-              const formatDateShort = (date: Date) => {
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const day = String(date.getDate()).padStart(2, '0');
-                return `${month}-${day}`;
+              
+              // KST 변환 후 포맷팅
+              const formatDateTimeShort = (date: Date) => {
+                const kstDate = toKST(date);
+                const month = String(kstDate.getMonth() + 1).padStart(2, '0');
+                const day = String(kstDate.getDate()).padStart(2, '0');
+                const hours = String(kstDate.getHours()).padStart(2, '0');
+                const minutes = String(kstDate.getMinutes()).padStart(2, '0');
+                return `${month}.${day} ${hours}:${minutes}`;
               };
-              const kickRulePeriod = `${formatDateShort(startDate)} ~ ${formatDateShort(deadlineDate)}`;
+              const kickRulePeriod = `${formatDateTimeShort(startDate)} ~ ${formatDateTimeShort(deadlineDate)}`;
               
               listContent += `**${idx}.** ${statusEmoji} **${user.username}**${warningEmoji} ${voiceEmoji}\n`;
               listContent += `    📅 Kick Rule 기간: ${kickRulePeriod}\n`;
