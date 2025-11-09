@@ -4,6 +4,20 @@ import { VoiceTracker } from '../../services/voiceTracker';
 import { userRepository } from '../../repositories/userRepository';
 import * as dateHelper from '../../utils/dateHelper';
 
+// Mock Supabase first to avoid initialization errors
+vi.mock('../../database/supabase', () => ({
+  supabase: {
+    from: vi.fn(() => ({
+      select: vi.fn().mockReturnThis(),
+      insert: vi.fn().mockReturnThis(),
+      update: vi.fn().mockReturnThis(),
+      delete: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn(),
+    })),
+  },
+}));
+
 // Mock repositories
 vi.mock('../../repositories/userRepository', () => ({
   userRepository: {
