@@ -60,5 +60,46 @@ export const commands = {
     .setName('sync')
     .setDescription('서버의 모든 멤버를 데이터베이스에 동기화 (초기 설정용)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+  kicksettings: new SlashCommandBuilder()
+    .setName('kicksettings')
+    .setDescription('킥 조건 설정 관리')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('view')
+        .setDescription('현재 킥 조건 설정 보기')
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('set')
+        .setDescription('킥 조건 설정 변경')
+        .addIntegerOption(option =>
+          option
+            .setName('kick_days')
+            .setDescription('강퇴 기준 일수 (예: 7일)')
+            .setMinValue(1)
+            .setRequired(false)
+        )
+        .addIntegerOption(option =>
+          option
+            .setName('warning_days')
+            .setDescription('경고 기준 일수 (예: 6일)')
+            .setMinValue(1)
+            .setRequired(false)
+        )
+        .addIntegerOption(option =>
+          option
+            .setName('required_minutes')
+            .setDescription('필요 활동 시간 (분 단위, 예: 30분)')
+            .setMinValue(1)
+            .setRequired(false)
+        )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('reset')
+        .setDescription('킥 조건을 기본값으로 초기화 (7일, 6일, 30분)')
+    ),
 };
 

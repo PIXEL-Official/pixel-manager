@@ -20,6 +20,7 @@ import { userRepository } from './repositories/userRepository';
 import { logger } from './utils/logger';
 import { deployCommands } from './utils/deployCommands';
 import { formatMinutes } from './utils/dateHelper';
+import * as kicksettingsCommand from './commands/kicksettings';
 
 // Load environment variables
 dotenv.config();
@@ -516,6 +517,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
         break;
 
+      case 'kicksettings':
+        await kicksettingsCommand.execute(interaction);
+        break;
+
       case 'help':
         const helpMessage = `
 📚 **사용 가능한 명령어**
@@ -527,6 +532,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 \`/sync\` - 서버의 모든 멤버를 DB에 등록 (초기 설정 시 1회 실행)
 \`/check\` - 수동으로 유저 체크 실행
 \`/status\` - 현재 봇 상태 확인
+\`/kicksettings\` - 킥 조건 설정 관리 (view/set/reset)
 
 **📋 채널 관리 (자동 감지):**
 \`/addchannel\` - 채널을 추적 목록에 추가 (음성 🎤 / 텍스트 💬 / 포럼 📋 자동 구분)

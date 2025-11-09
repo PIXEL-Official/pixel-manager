@@ -1,20 +1,23 @@
 import { Client, GuildMember } from 'discord.js';
 import { userRepository } from '../repositories/userRepository';
+import { kickSettingsRepository } from '../repositories/kickSettingsRepository';
 import { VoiceTracker } from './voiceTracker';
 import {
-  hasSevenDaysPassed,
-  isWarningTime,
-  meetsWeeklyRequirement,
+  hasDaysPassed,
+  isWarningTimeWithDays,
+  meetsRequirement,
   parseISODate,
   formatMinutes,
-  getDaysUntilDeadline,
+  getDaysUntilDeadlineWithDays,
 } from '../utils/dateHelper';
 import { logger } from '../utils/logger';
+import { KickSettings } from '../models/types';
 
 export class KickChecker {
   private client: Client;
   private guildId: string;
   private voiceTracker: VoiceTracker;
+  private settings: KickSettings | null = null;
 
   constructor(client: Client, guildId: string, voiceTracker: VoiceTracker) {
     this.client = client;
@@ -23,11 +26,30 @@ export class KickChecker {
   }
 
   /**
+   * Load kick settings from database
+   */
+  private async getSettings(): Promise<KickSettings> {
+    if (!this.settings) {
+      this.settings = await kickSettingsRepository.getSettings(this.guildId);
+    }
+    return this.settings;
+  }
+
+  /**
+   * Refresh settings from database (useful after settings update)
+   */
+  async refreshSettings(): Promise<void> {
+    this.settings = await kickSettingsRepository.getSettings(this.guildId);
+    logger.info(`Kick settings refreshed for guild ${this.guildId}`, this.settings);
+  }
+
+  /**
    * 주기적으로 실행되는 체크 로직
    */
   async checkAndKickUsers(): Promise<void> {
     logger.checkStarted();
 
+    const settings = await this.getSettings();
     const users = await userRepository.getUsersToCheck(this.guildId);
     let usersWarned = 0;
     let usersKicked = 0;
@@ -39,13 +61,22 @@ export class KickChecker {
           ? parseISODate(user.last_voice_time)
           : parseISODate(user.joined_at);
 
-        const sevenDaysPassed = hasSevenDaysPassed(referenceDate);
-        const isWarning = isWarningTime(referenceDate);
-        const meetsRequirement = meetsWeeklyRequirement(user.total_minutes);
+        const kickDaysPassed = hasDaysPassed(referenceDate, settings.kick_days);
+        const isWarning = isWarningTimeWithDays(
+          referenceDate,
+          settings.warning_days,
+          settings.kick_days
+        );
+        const meetsReq = meetsRequirement(user.total_minutes, settings.required_minutes);
 
-        // 7일 경과 + 30분 미달 = 강퇴
-        if (sevenDaysPassed && !meetsRequirement) {
-          const kicked = await this.kickUser(user.user_id, user.username, user.total_minutes);
+        // kick_days 경과 + required_minutes 미달 = 강퇴
+        if (kickDaysPassed && !meetsReq) {
+          const kicked = await this.kickUser(
+            user.user_id,
+            user.username,
+            user.total_minutes,
+            settings
+          );
           if (kicked) {
             usersKicked++;
             // 상태를 kicked로 변경
@@ -54,13 +85,14 @@ export class KickChecker {
             });
           }
         }
-        // 6일 경과 (24시간 전) + 30분 미달 + 경고 미발송 = 경고
-        else if (isWarning && !meetsRequirement && !user.warning_sent) {
+        // warning_days 경과 + required_minutes 미달 + 경고 미발송 = 경고
+        else if (isWarning && !meetsReq && !user.warning_sent) {
           const warned = await this.sendWarning(
             user.user_id,
             user.username,
             user.total_minutes,
-            referenceDate
+            referenceDate,
+            settings
           );
           if (warned) {
             usersWarned++;
@@ -86,7 +118,8 @@ export class KickChecker {
     userId: string,
     username: string,
     totalMinutes: number,
-    referenceDate: Date
+    referenceDate: Date,
+    settings: KickSettings
   ): Promise<boolean> {
     try {
       const guild = await this.client.guilds.fetch(this.guildId);
@@ -97,8 +130,8 @@ export class KickChecker {
         return false;
       }
 
-      const daysRemaining = getDaysUntilDeadline(referenceDate);
-      const minutesNeeded = 30 - totalMinutes;
+      const daysRemaining = getDaysUntilDeadlineWithDays(referenceDate, settings.kick_days);
+      const minutesNeeded = settings.required_minutes - totalMinutes;
 
       const warningMessage = `
 ⚠️ **스터디 활동 경고**
@@ -107,7 +140,7 @@ export class KickChecker {
 
 현재 주간 음성 채널 활동 시간이 부족합니다:
 - 현재 활동 시간: ${formatMinutes(totalMinutes)}
-- 필요 시간: 30분
+- 필요 시간: ${settings.required_minutes}분
 - 부족한 시간: ${formatMinutes(minutesNeeded)}
 - 남은 기간: 약 ${daysRemaining}일
 
@@ -128,7 +161,12 @@ export class KickChecker {
   /**
    * 유저 강퇴
    */
-  private async kickUser(userId: string, username: string, totalMinutes: number): Promise<boolean> {
+  private async kickUser(
+    userId: string,
+    username: string,
+    totalMinutes: number,
+    settings: KickSettings
+  ): Promise<boolean> {
     try {
       const guild = await this.client.guilds.fetch(this.guildId);
       const member = await guild.members.fetch(userId);
@@ -138,7 +176,7 @@ export class KickChecker {
         return false;
       }
 
-      const kickReason = `주간 활동 시간 미달 (${formatMinutes(totalMinutes)} / 30분)`;
+      const kickReason = `주간 활동 시간 미달 (${formatMinutes(totalMinutes)} / ${settings.required_minutes}분)`;
 
       // 강퇴 전 DM 발송 시도
       try {
@@ -147,10 +185,10 @@ export class KickChecker {
 
 ${username}님, 안녕하세요.
 
-주간 음성 채널 활동 시간(30분) 미달로 인해 서버에서 자동 퇴장 처리되었습니다.
+주간 음성 채널 활동 시간(${settings.required_minutes}분) 미달로 인해 서버에서 자동 퇴장 처리되었습니다.
 
 - 최종 활동 시간: ${formatMinutes(totalMinutes)}
-- 필요 시간: 30분
+- 필요 시간: ${settings.required_minutes}분
 
 다시 참여를 원하시면 관리자에게 문의해 주세요.
         `.trim();
@@ -176,6 +214,7 @@ ${username}님, 안녕하세요.
   async manualCheck(): Promise<{ warned: number; kicked: number; total: number }> {
     logger.info('Manual check initiated');
     
+    const settings = await this.getSettings();
     const users = await userRepository.getUsersToCheck(this.guildId);
     let usersWarned = 0;
     let usersKicked = 0;
@@ -185,24 +224,34 @@ ${username}님, 안녕하세요.
         ? parseISODate(user.last_voice_time)
         : parseISODate(user.joined_at);
 
-      const sevenDaysPassed = hasSevenDaysPassed(referenceDate);
-      const isWarning = isWarningTime(referenceDate);
-      const meetsRequirement = meetsWeeklyRequirement(user.total_minutes);
+      const kickDaysPassed = hasDaysPassed(referenceDate, settings.kick_days);
+      const isWarning = isWarningTimeWithDays(
+        referenceDate,
+        settings.warning_days,
+        settings.kick_days
+      );
+      const meetsReq = meetsRequirement(user.total_minutes, settings.required_minutes);
 
-      if (sevenDaysPassed && !meetsRequirement) {
-        const kicked = await this.kickUser(user.user_id, user.username, user.total_minutes);
+      if (kickDaysPassed && !meetsReq) {
+        const kicked = await this.kickUser(
+          user.user_id,
+          user.username,
+          user.total_minutes,
+          settings
+        );
         if (kicked) {
           usersKicked++;
           await userRepository.updateUser(user.user_id, this.guildId, {
             status: 'kicked',
           });
         }
-      } else if (isWarning && !meetsRequirement && !user.warning_sent) {
+      } else if (isWarning && !meetsReq && !user.warning_sent) {
         const warned = await this.sendWarning(
           user.user_id,
           user.username,
           user.total_minutes,
-          referenceDate
+          referenceDate,
+          settings
         );
         if (warned) {
           usersWarned++;
@@ -238,6 +287,7 @@ ${username}님, 안녕하세요.
     lastMessageTime: string | null;
     isCurrentlyInVoice: boolean;
   }>> {
+    const settings = await this.getSettings();
     const users = await userRepository.getUsersToCheck(this.guildId);
     
     return users.map(user => {
@@ -249,8 +299,8 @@ ${username}님, 안녕하세요.
       const currentSessionMinutes = this.voiceTracker.getCurrentSessionMinutes(user.user_id);
       const actualTotalMinutes = user.total_minutes + currentSessionMinutes;
 
-      const daysUntilDeadline = getDaysUntilDeadline(referenceDate);
-      const meetsRequirement = meetsWeeklyRequirement(actualTotalMinutes);
+      const daysUntilDeadline = getDaysUntilDeadlineWithDays(referenceDate, settings.kick_days);
+      const meetsReq = meetsRequirement(actualTotalMinutes, settings.required_minutes);
 
       return {
         userId: user.user_id,
@@ -260,7 +310,7 @@ ${username}님, 안녕하세요.
         actualTotalMinutes,
         status: user.status,
         daysUntilDeadline,
-        meetsRequirement,
+        meetsRequirement: meetsReq,
         referenceDate,
         lastVoiceTime: user.last_voice_time,
         lastMessageTime: user.last_message_time,

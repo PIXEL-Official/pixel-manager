@@ -7,32 +7,64 @@ export function getWeekStart(referenceDate: Date): Date {
 
 /**
  * 7일 경과 여부 체크
+ * @deprecated Use hasDaysPassed with custom days parameter instead
  */
 export function hasSevenDaysPassed(startDate: Date, now: Date = new Date()): boolean {
+  return hasDaysPassed(startDate, 7, now);
+}
+
+/**
+ * 지정된 일수 경과 여부 체크
+ */
+export function hasDaysPassed(startDate: Date, days: number, now: Date = new Date()): boolean {
   const diffMs = now.getTime() - startDate.getTime();
   const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  return diffDays >= 7;
+  return diffDays >= days;
 }
 
 /**
  * 24시간 전 (6일 경과) 체크 - 경고 발송 타이밍
+ * @deprecated Use isWarningTimeWithDays with custom days parameters instead
  */
 export function isWarningTime(startDate: Date, now: Date = new Date()): boolean {
+  return isWarningTimeWithDays(startDate, 6, 7, now);
+}
+
+/**
+ * 경고 발송 타이밍 체크 (warningDays 이상, kickDays 미만)
+ */
+export function isWarningTimeWithDays(
+  startDate: Date,
+  warningDays: number,
+  kickDays: number,
+  now: Date = new Date()
+): boolean {
   const diffMs = now.getTime() - startDate.getTime();
   const diffDays = diffMs / (1000 * 60 * 60 * 24);
   
-  // 6일 이상 7일 미만
-  return diffDays >= 6 && diffDays < 7;
+  return diffDays >= warningDays && diffDays < kickDays;
 }
 
 /**
  * 남은 일수 계산
+ * @deprecated Use getDaysUntilDeadlineWithDays with custom days parameter instead
  */
 export function getDaysUntilDeadline(startDate: Date, now: Date = new Date()): number {
-  const sevenDaysLater = new Date(startDate);
-  sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+  return getDaysUntilDeadlineWithDays(startDate, 7, now);
+}
+
+/**
+ * 남은 일수 계산 (설정된 일수 기준)
+ */
+export function getDaysUntilDeadlineWithDays(
+  startDate: Date,
+  kickDays: number,
+  now: Date = new Date()
+): number {
+  const deadlineDate = new Date(startDate);
+  deadlineDate.setDate(deadlineDate.getDate() + kickDays);
   
-  const diffMs = sevenDaysLater.getTime() - now.getTime();
+  const diffMs = deadlineDate.getTime() - now.getTime();
   const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
   
   return Math.max(0, diffDays);
@@ -40,9 +72,17 @@ export function getDaysUntilDeadline(startDate: Date, now: Date = new Date()): n
 
 /**
  * 주간 시간 충족 여부 (30분 이상)
+ * @deprecated Use meetsRequirement with custom minutes parameter instead
  */
 export function meetsWeeklyRequirement(totalMinutes: number): boolean {
-  return totalMinutes >= 30;
+  return meetsRequirement(totalMinutes, 30);
+}
+
+/**
+ * 필요 시간 충족 여부 체크
+ */
+export function meetsRequirement(totalMinutes: number, requiredMinutes: number): boolean {
+  return totalMinutes >= requiredMinutes;
 }
 
 /**

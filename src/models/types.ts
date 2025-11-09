@@ -61,3 +61,12 @@ export interface ChatChannel {
   created_at?: string;
   updated_at?: string;
 }
+
+export interface KickSettings {
+  guild_id: string;
+  kick_days: number;
+  warning_days: number;
+  required_minutes: number;
+  created_at?: string;
+  updated_at?: string;
+}
