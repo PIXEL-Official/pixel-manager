@@ -1,0 +1,54 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { ChatChannelRepository } from '../../repositories/chatChannelRepository';
+
+describe('ChatChannelRepository', () => {
+  let repository: ChatChannelRepository;
+
+  beforeEach(() => {
+    repository = new ChatChannelRepository();
+  });
+
+  describe('constructor', () => {
+    it('should create instance', () => {
+      expect(repository).toBeInstanceOf(ChatChannelRepository);
+    });
+  });
+
+  describe('methods', () => {
+    it('should have addChannel method', () => {
+      expect(typeof repository.addChannel).toBe('function');
+    });
+
+    it('should have getChannelById method', () => {
+      expect(typeof repository.getChannelById).toBe('function');
+    });
+
+    it('should have getActiveChannels method', () => {
+      expect(typeof repository.getActiveChannels).toBe('function');
+    });
+
+    it('should have getAllChannels method', () => {
+      expect(typeof repository.getAllChannels).toBe('function');
+    });
+
+    it('should have removeChannel method', () => {
+      expect(typeof repository.removeChannel).toBe('function');
+    });
+
+    it('should have deleteChannel method', () => {
+      expect(typeof repository.deleteChannel).toBe('function');
+    });
+
+    it('should have reactivateChannel method', () => {
+      expect(typeof repository.reactivateChannel).toBe('function');
+    });
+
+    it('should have updateChannelName method', () => {
+      expect(typeof repository.updateChannelName).toBe('function');
+    });
+
+    it('should have isTrackedChannel method', () => {
+      expect(typeof repository.isTrackedChannel).toBe('function');
+    });
+  });
+});

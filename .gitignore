@@ -1,7 +1,5 @@
 # Dependencies
 node_modules/
-
-# pnpm
 pnpm-lock.yaml
 
 # Build output
@@ -9,10 +7,15 @@ dist/
 
 # Environment variables
 .env
+.env.local
+.env.*.local
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
@@ -25,3 +28,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
