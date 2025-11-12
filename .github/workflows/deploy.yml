@@ -135,8 +135,8 @@ jobs:
           EOF
 
           # 스크립트를 서버에 복사하고 실행
-          scp -o StrictHostKeyChecking=no deploy.sh ubuntu@$INSTANCE_IP:/tmp/deploy.sh
-          ssh -o StrictHostKeyChecking=no ubuntu@$INSTANCE_IP "bash /tmp/deploy.sh"
+          scp -o StrictHostKeyChecking=no deploy.sh opc@$INSTANCE_IP:/tmp/deploy.sh
+          ssh -o StrictHostKeyChecking=no opc@$INSTANCE_IP "bash /tmp/deploy.sh"
 
       - name: Verify deployment
         env:
@@ -146,7 +146,7 @@ jobs:
           sleep 10
           
           echo "Checking container status..."
-          ssh -o StrictHostKeyChecking=no ubuntu@$INSTANCE_IP "docker logs --tail 50 pixel-manager"
+          ssh -o StrictHostKeyChecking=no opc@$INSTANCE_IP "docker logs --tail 50 pixel-manager"
 
   notify:
     name: Send Notification
