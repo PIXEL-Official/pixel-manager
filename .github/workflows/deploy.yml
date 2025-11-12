@@ -83,15 +83,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup OCI CLI
-        uses: oracle-actions/configure-oci-cli@v1.1
-        with:
-          user-ocid: ${{ secrets.OCI_USER_OCID }}
-          tenancy-ocid: ${{ secrets.OCI_TENANCY_OCID }}
-          region: ${{ env.OCI_REGION }}
-          fingerprint: ${{ secrets.OCI_FINGERPRINT }}
-          api-private-key: ${{ secrets.OCI_API_PRIVATE_KEY }}
-
       - name: Deploy to Compute Instance
         env:
           INSTANCE_IP: ${{ secrets.OCI_INSTANCE_IP }}
