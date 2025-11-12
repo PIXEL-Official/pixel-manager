@@ -78,9 +78,9 @@ describe('KickChecker - Core Logic', () => {
     it('should kick user when 7 days passed and total minutes < 30', async () => {
       // Mock date helper functions
       vi.spyOn(dateHelper, 'parseISODate').mockReturnValue(new Date('2025-01-01'));
-      vi.spyOn(dateHelper, 'hasSevenDaysPassed').mockReturnValue(true); // 7일 경과
-      vi.spyOn(dateHelper, 'isWarningTime').mockReturnValue(false);
-      vi.spyOn(dateHelper, 'meetsWeeklyRequirement').mockReturnValue(false); // 30분 미달
+      vi.spyOn(dateHelper, 'hasDaysPassed').mockReturnValue(true); // kick_days 경과
+      vi.spyOn(dateHelper, 'isWarningTimeWithDays').mockReturnValue(false);
+      vi.spyOn(dateHelper, 'meetsRequirement').mockReturnValue(false); // 30분 미달
       vi.spyOn(dateHelper, 'formatMinutes').mockReturnValue('20분');
 
       // Mock user data - 7일 경과, 20분만 활동
@@ -116,9 +116,9 @@ describe('KickChecker - Core Logic', () => {
 
     it('should NOT kick user when 7 days passed but total minutes >= 30', async () => {
       vi.spyOn(dateHelper, 'parseISODate').mockReturnValue(new Date('2025-01-01'));
-      vi.spyOn(dateHelper, 'hasSevenDaysPassed').mockReturnValue(true);
-      vi.spyOn(dateHelper, 'isWarningTime').mockReturnValue(false);
-      vi.spyOn(dateHelper, 'meetsWeeklyRequirement').mockReturnValue(true); // 30분 달성
+      vi.spyOn(dateHelper, 'hasDaysPassed').mockReturnValue(true);
+      vi.spyOn(dateHelper, 'isWarningTimeWithDays').mockReturnValue(false);
+      vi.spyOn(dateHelper, 'meetsRequirement').mockReturnValue(true); // 30분 달성
 
       const mockUsers = [{
         user_id: 'user-456',
@@ -146,10 +146,10 @@ describe('KickChecker - Core Logic', () => {
   describe('Warning Logic - 6일 경과 + 30분 미달', () => {
     it('should send warning when 6 days passed and total minutes < 30', async () => {
       vi.spyOn(dateHelper, 'parseISODate').mockReturnValue(new Date('2025-01-01'));
-      vi.spyOn(dateHelper, 'hasSevenDaysPassed').mockReturnValue(false); // 7일 미경과
-      vi.spyOn(dateHelper, 'isWarningTime').mockReturnValue(true); // 6일 경과 (경고 시간)
-      vi.spyOn(dateHelper, 'meetsWeeklyRequirement').mockReturnValue(false); // 30분 미달
-      vi.spyOn(dateHelper, 'getDaysUntilDeadline').mockReturnValue(1);
+      vi.spyOn(dateHelper, 'hasDaysPassed').mockReturnValue(false); // kick_days 미경과
+      vi.spyOn(dateHelper, 'isWarningTimeWithDays').mockReturnValue(true); // warning 시간
+      vi.spyOn(dateHelper, 'meetsRequirement').mockReturnValue(false); // 요구사항 미달
+      vi.spyOn(dateHelper, 'getDaysUntilDeadlineWithDays').mockReturnValue(1);
       vi.spyOn(dateHelper, 'formatMinutes').mockImplementation((m) => `${m}분`);
 
       const mockUsers = [{
@@ -186,9 +186,9 @@ describe('KickChecker - Core Logic', () => {
 
     it('should NOT send warning if already sent', async () => {
       vi.spyOn(dateHelper, 'parseISODate').mockReturnValue(new Date('2025-01-01'));
-      vi.spyOn(dateHelper, 'hasSevenDaysPassed').mockReturnValue(false);
-      vi.spyOn(dateHelper, 'isWarningTime').mockReturnValue(true);
-      vi.spyOn(dateHelper, 'meetsWeeklyRequirement').mockReturnValue(false);
+      vi.spyOn(dateHelper, 'hasDaysPassed').mockReturnValue(false); // kick_days 미경과
+      vi.spyOn(dateHelper, 'isWarningTimeWithDays').mockReturnValue(true); // warning 시간
+      vi.spyOn(dateHelper, 'meetsRequirement').mockReturnValue(false); // 요구사항 미달
 
       const mockUsers = [{
         user_id: 'user-999',
@@ -215,9 +215,9 @@ describe('KickChecker - Core Logic', () => {
   describe('Safe Users - 30분 달성', () => {
     it('should do nothing when user meets requirement', async () => {
       vi.spyOn(dateHelper, 'parseISODate').mockReturnValue(new Date('2025-01-01'));
-      vi.spyOn(dateHelper, 'hasSevenDaysPassed').mockReturnValue(false);
-      vi.spyOn(dateHelper, 'isWarningTime').mockReturnValue(false);
-      vi.spyOn(dateHelper, 'meetsWeeklyRequirement').mockReturnValue(true); // 30분 달성
+      vi.spyOn(dateHelper, 'hasDaysPassed').mockReturnValue(false);
+      vi.spyOn(dateHelper, 'isWarningTimeWithDays').mockReturnValue(false);
+      vi.spyOn(dateHelper, 'meetsRequirement').mockReturnValue(true); // 30분 달성
 
       const mockUsers = [{
         user_id: 'user-safe',
@@ -282,8 +282,8 @@ describe('KickChecker - Core Logic', () => {
   describe('getDetailedUserList', () => {
     it('should include current session minutes in total', async () => {
       vi.spyOn(dateHelper, 'parseISODate').mockReturnValue(new Date('2025-01-01'));
-      vi.spyOn(dateHelper, 'getDaysUntilDeadline').mockReturnValue(3);
-      vi.spyOn(dateHelper, 'meetsWeeklyRequirement').mockImplementation((mins) => mins >= 30);
+      vi.spyOn(dateHelper, 'getDaysUntilDeadlineWithDays').mockReturnValue(3);
+      vi.spyOn(dateHelper, 'meetsRequirement').mockImplementation((mins) => mins >= 30);
 
       const mockUsers = [{
         user_id: 'user-online',
@@ -319,8 +319,8 @@ describe('KickChecker - Core Logic', () => {
 
     it('should sort users by requirement status and minutes', async () => {
       vi.spyOn(dateHelper, 'parseISODate').mockReturnValue(new Date('2025-01-01'));
-      vi.spyOn(dateHelper, 'getDaysUntilDeadline').mockReturnValue(3);
-      vi.spyOn(dateHelper, 'meetsWeeklyRequirement').mockImplementation((mins) => mins >= 30);
+      vi.spyOn(dateHelper, 'getDaysUntilDeadlineWithDays').mockReturnValue(3);
+      vi.spyOn(dateHelper, 'meetsRequirement').mockImplementation((mins) => mins >= 30);
 
       const mockUsers = [
         {
