@@ -135,8 +135,8 @@ jobs:
           }
           
           echo "=== Testing SSH connection ==="
-          echo "Attempting connection to opc@$INSTANCE_IP..."
-          if ! ssh -v -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=10 opc@$INSTANCE_IP "echo 'SSH connection successful'" 2>&1; then
+          echo "Attempting connection to ubuntu@$INSTANCE_IP..."
+          if ! ssh -v -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=10 ubuntu@$INSTANCE_IP "echo 'SSH connection successful'" 2>&1; then
             echo ""
             echo "ERROR: SSH connection failed"
             echo "Please verify:"
@@ -245,11 +245,11 @@ jobs:
           SCRIPT_EOF
           
           echo "=== Copying files to server ==="
-          scp -o StrictHostKeyChecking=no .env.deploy opc@$INSTANCE_IP:/tmp/.env.deploy
-          scp -o StrictHostKeyChecking=no deploy.sh opc@$INSTANCE_IP:/tmp/deploy.sh
+          scp -o StrictHostKeyChecking=no .env.deploy ubuntu@$INSTANCE_IP:/tmp/.env.deploy
+          scp -o StrictHostKeyChecking=no deploy.sh ubuntu@$INSTANCE_IP:/tmp/deploy.sh
           
           echo "=== Executing deployment script ==="
-          ssh -o StrictHostKeyChecking=no opc@$INSTANCE_IP "chmod +x /tmp/deploy.sh && /tmp/deploy.sh"
+          ssh -o StrictHostKeyChecking=no ubuntu@$INSTANCE_IP "chmod +x /tmp/deploy.sh && /tmp/deploy.sh"
           
           echo "=== Cleaning up local files ==="
           rm -f .env.deploy deploy.sh
@@ -262,7 +262,7 @@ jobs:
           sleep 10
           
           echo "Checking container status..."
-          ssh -o StrictHostKeyChecking=no opc@$INSTANCE_IP "docker logs --tail 50 pixel-manager"
+          ssh -o StrictHostKeyChecking=no ubuntu@$INSTANCE_IP "docker logs --tail 50 pixel-manager"
 
   notify:
     name: Send Notification
