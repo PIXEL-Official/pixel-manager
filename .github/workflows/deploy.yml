@@ -102,41 +102,41 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $INSTANCE_IP >> ~/.ssh/known_hosts
 
-          # 컨테이너 배포 스크립트 생성
-          cat > deploy.sh << 'EOF'
-          #!/bin/bash
+          # 원격 서버에서 직접 실행 (환경 변수 전달)
+          ssh -o StrictHostKeyChecking=no opc@$INSTANCE_IP bash << EOF
           set -e
-
+          
+          echo "=== Deployment started ==="
+          echo "Registry: $OCI_REGISTRY"
+          echo "Namespace: $OCI_NAMESPACE"
+          echo "Image: $IMAGE_NAME"
+          
           echo "Logging in to Oracle Container Registry..."
           echo "$OCI_AUTH_TOKEN" | docker login $OCI_REGISTRY -u "$OCI_USERNAME" --password-stdin
-
+          
           echo "Pulling latest image..."
           docker pull $OCI_REGISTRY/$OCI_NAMESPACE/$IMAGE_NAME:latest
-
+          
           echo "Stopping existing container..."
-          docker stop pixel-manager || true
-          docker rm pixel-manager || true
-
+          docker stop pixel-manager 2>/dev/null || true
+          docker rm pixel-manager 2>/dev/null || true
+          
           echo "Starting new container..."
-          docker run -d \
-            --name pixel-manager \
-            --restart unless-stopped \
-            -e DISCORD_TOKEN="$DISCORD_TOKEN" \
-            -e GUILD_ID="$GUILD_ID" \
-            -e SUPABASE_URL="$SUPABASE_URL" \
-            -e SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+          docker run -d \\
+            --name pixel-manager \\
+            --restart unless-stopped \\
+            -e DISCORD_TOKEN="$DISCORD_TOKEN" \\
+            -e GUILD_ID="$GUILD_ID" \\
+            -e SUPABASE_URL="$SUPABASE_URL" \\
+            -e SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \\
             $OCI_REGISTRY/$OCI_NAMESPACE/$IMAGE_NAME:latest
-
+          
           echo "Cleaning up old images..."
           docker image prune -af
-
-          echo "Deployment completed successfully!"
-          docker ps | grep pixel-manager
+          
+          echo "=== Deployment completed ==="
+          docker ps --filter name=pixel-manager
           EOF
-
-          # 스크립트를 서버에 복사하고 실행
-          scp -o StrictHostKeyChecking=no deploy.sh opc@$INSTANCE_IP:/tmp/deploy.sh
-          ssh -o StrictHostKeyChecking=no opc@$INSTANCE_IP "bash /tmp/deploy.sh"
 
       - name: Verify deployment
         env:
