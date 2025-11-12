@@ -161,10 +161,9 @@ jobs:
     name: Send Notification
     runs-on: ubuntu-latest
     needs: [test, build-and-push, deploy]
-    if: always()
+    if: always() && secrets.DISCORD_WEBHOOK_URL != ''
     steps:
       - name: Send Discord notification
-        if: always()
         uses: sarisia/actions-status-discord@v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -175,4 +174,5 @@ jobs:
             Commit: ${{ github.sha }}
             Branch: ${{ github.ref_name }}
           color: ${{ job.status == 'success' && '0x00ff00' || '0xff0000' }}
+          ack_no_webhook: true
 
