@@ -96,51 +96,93 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          # SSH 키 설정
+          set -e
+          
+          echo "=== Setting up SSH ==="
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $INSTANCE_IP >> ~/.ssh/known_hosts
+          
+          echo "=== Testing SSH connection ==="
+          if ! ssh -o StrictHostKeyChecking=no opc@$INSTANCE_IP "echo 'SSH connection successful'"; then
+            echo "ERROR: SSH connection failed"
+            exit 1
+          fi
 
-          # 배포 스크립트 생성
+          echo "=== Creating environment file ==="
+          cat > .env.deploy << EOF
+          OCI_REGISTRY=$OCI_REGISTRY
+          OCI_NAMESPACE=$OCI_NAMESPACE
+          OCI_USERNAME=$OCI_USERNAME
+          OCI_AUTH_TOKEN=$OCI_AUTH_TOKEN
+          IMAGE_NAME=$IMAGE_NAME
+          DISCORD_TOKEN=$DISCORD_TOKEN
+          GUILD_ID=$GUILD_ID
+          SUPABASE_URL=$SUPABASE_URL
+          SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+          EOF
+
+          echo "=== Creating deployment script ==="
           cat > deploy.sh << 'SCRIPT_EOF'
           #!/bin/bash
-          set -ex
+          set -e  # Exit on error
+          
+          # Load environment variables
+          if [ -f /tmp/.env.deploy ]; then
+            set -a
+            source /tmp/.env.deploy
+            set +a
+            echo "Environment variables loaded successfully"
+          else
+            echo "ERROR: Environment file not found"
+            exit 1
+          fi
           
           echo "=== Deployment started ==="
           echo "Registry: ${OCI_REGISTRY}"
           echo "Namespace: ${OCI_NAMESPACE}"
+          echo "Username: ${OCI_USERNAME}"
           echo "Image: ${IMAGE_NAME}"
           
           # Check Docker
-          echo "Checking Docker installation..."
+          echo "=== Checking Docker installation ==="
           if ! command -v docker &> /dev/null; then
               echo "ERROR: Docker is not installed"
               exit 1
           fi
           
-          echo "Docker version:"
-          docker --version || sudo docker --version
+          docker --version 2>&1 || {
+            echo "Trying with sudo..."
+            sudo docker --version 2>&1
+          }
           
           # Determine if sudo is needed
           if docker ps &> /dev/null; then
               DOCKER_CMD="docker"
+              echo "Using docker without sudo"
           else
-              echo "Using sudo for docker commands"
               DOCKER_CMD="sudo docker"
+              echo "Using docker with sudo"
           fi
           
-          echo "Logging in to Oracle Container Registry..."
-          echo "${OCI_AUTH_TOKEN}" | ${DOCKER_CMD} login ${OCI_REGISTRY} -u "${OCI_USERNAME}" --password-stdin
+          echo "=== Logging in to Oracle Container Registry ==="
+          echo "${OCI_AUTH_TOKEN}" | ${DOCKER_CMD} login ${OCI_REGISTRY} -u "${OCI_USERNAME}" --password-stdin 2>&1 || {
+            echo "ERROR: Docker login failed"
+            exit 1
+          }
           
-          echo "Pulling latest image..."
-          ${DOCKER_CMD} pull ${OCI_REGISTRY}/${OCI_NAMESPACE}/${IMAGE_NAME}:latest
+          echo "=== Pulling latest image ==="
+          ${DOCKER_CMD} pull ${OCI_REGISTRY}/${OCI_NAMESPACE}/${IMAGE_NAME}:latest 2>&1 || {
+            echo "ERROR: Failed to pull image"
+            exit 1
+          }
           
-          echo "Stopping existing container..."
-          ${DOCKER_CMD} stop pixel-manager 2>/dev/null || true
-          ${DOCKER_CMD} rm pixel-manager 2>/dev/null || true
+          echo "=== Stopping existing container ==="
+          ${DOCKER_CMD} stop pixel-manager 2>/dev/null || echo "No existing container to stop"
+          ${DOCKER_CMD} rm pixel-manager 2>/dev/null || echo "No existing container to remove"
           
-          echo "Starting new container..."
+          echo "=== Starting new container ==="
           ${DOCKER_CMD} run -d \
             --name pixel-manager \
             --restart unless-stopped \
@@ -148,30 +190,30 @@ jobs:
             -e GUILD_ID="${GUILD_ID}" \
             -e SUPABASE_URL="${SUPABASE_URL}" \
             -e SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY}" \
-            ${OCI_REGISTRY}/${OCI_NAMESPACE}/${IMAGE_NAME}:latest
+            ${OCI_REGISTRY}/${OCI_NAMESPACE}/${IMAGE_NAME}:latest 2>&1 || {
+            echo "ERROR: Failed to start container"
+            exit 1
+          }
           
-          echo "Cleaning up old images..."
-          ${DOCKER_CMD} image prune -af
+          echo "=== Cleaning up old images ==="
+          ${DOCKER_CMD} image prune -af 2>&1 || echo "Warning: Image cleanup failed (non-critical)"
           
           echo "=== Deployment completed ==="
           ${DOCKER_CMD} ps --filter name=pixel-manager
+          
+          # Clean up sensitive data
+          rm -f /tmp/.env.deploy
           SCRIPT_EOF
           
-          # 스크립트를 서버로 복사
+          echo "=== Copying files to server ==="
+          scp -o StrictHostKeyChecking=no .env.deploy opc@$INSTANCE_IP:/tmp/.env.deploy
           scp -o StrictHostKeyChecking=no deploy.sh opc@$INSTANCE_IP:/tmp/deploy.sh
           
-          # 환경 변수와 함께 스크립트 실행
-          ssh -o StrictHostKeyChecking=no opc@$INSTANCE_IP \
-            "export OCI_REGISTRY='$OCI_REGISTRY' && \
-             export OCI_NAMESPACE='$OCI_NAMESPACE' && \
-             export OCI_USERNAME='$OCI_USERNAME' && \
-             export OCI_AUTH_TOKEN='$OCI_AUTH_TOKEN' && \
-             export IMAGE_NAME='$IMAGE_NAME' && \
-             export DISCORD_TOKEN='$DISCORD_TOKEN' && \
-             export GUILD_ID='$GUILD_ID' && \
-             export SUPABASE_URL='$SUPABASE_URL' && \
-             export SUPABASE_ANON_KEY='$SUPABASE_ANON_KEY' && \
-             bash /tmp/deploy.sh 2>&1"
+          echo "=== Executing deployment script ==="
+          ssh -o StrictHostKeyChecking=no opc@$INSTANCE_IP "chmod +x /tmp/deploy.sh && /tmp/deploy.sh"
+          
+          echo "=== Cleaning up local files ==="
+          rm -f .env.deploy deploy.sh
 
       - name: Verify deployment
         env:
