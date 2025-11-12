@@ -112,16 +112,42 @@ jobs:
           head -n 1 ~/.ssh/id_rsa
           tail -n 1 ~/.ssh/id_rsa
           
-          echo "Adding host to known_hosts..."
-          ssh-keyscan -H $INSTANCE_IP >> ~/.ssh/known_hosts 2>&1 || { echo "ERROR: ssh-keyscan failed"; exit 1; }
+          echo "Checking INSTANCE_IP value..."
+          echo "IP Address: $INSTANCE_IP"
+          
+          echo "Testing network connectivity to instance..."
+          if ping -c 2 -W 5 $INSTANCE_IP; then
+            echo "Host is reachable via ping"
+          else
+            echo "Warning: Host not reachable via ping (might be blocked by firewall)"
+          fi
+          
+          echo "Testing SSH port (22)..."
+          if timeout 5 bash -c "cat < /dev/null > /dev/tcp/$INSTANCE_IP/22"; then
+            echo "SSH port 22 is open"
+          else
+            echo "Warning: Cannot connect to SSH port 22"
+          fi
+          
+          echo "Adding host to known_hosts (attempting)..."
+          ssh-keyscan -T 10 -H $INSTANCE_IP >> ~/.ssh/known_hosts 2>&1 || {
+            echo "Warning: ssh-keyscan failed, but will try to connect anyway"
+          }
           
           echo "=== Testing SSH connection ==="
-          if ! ssh -v -o StrictHostKeyChecking=no -o ConnectTimeout=10 opc@$INSTANCE_IP "echo 'SSH connection successful'" 2>&1; then
+          echo "Attempting connection to opc@$INSTANCE_IP..."
+          if ! ssh -v -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=10 opc@$INSTANCE_IP "echo 'SSH connection successful'" 2>&1; then
+            echo ""
             echo "ERROR: SSH connection failed"
+            echo "Please verify:"
+            echo "1. OCI_INSTANCE_IP is correct in GitHub Secrets"
+            echo "2. Instance is running"
+            echo "3. Security List allows SSH (port 22) from GitHub Actions IPs"
+            echo "4. OCI_SSH_PRIVATE_KEY matches the public key on the instance"
             exit 1
           fi
           
-          echo "SSH connection test passed!"
+          echo "✓ SSH connection test passed!"
 
           echo "=== Creating environment file ==="
           cat > .env.deploy << EOF
