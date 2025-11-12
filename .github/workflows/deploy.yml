@@ -161,18 +161,24 @@ jobs:
     name: Send Notification
     runs-on: ubuntu-latest
     needs: [test, build-and-push, deploy]
-    if: always() && secrets.DISCORD_WEBHOOK_URL != ''
+    if: always()
     steps:
+      - name: Check deployment result
+        run: |
+          echo "Test: ${{ needs.test.result }}"
+          echo "Build: ${{ needs.build-and-push.result }}"
+          echo "Deploy: ${{ needs.deploy.result }}"
+      
       - name: Send Discord notification
+        continue-on-error: true
         uses: sarisia/actions-status-discord@v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          status: ${{ job.status }}
+          status: ${{ needs.deploy.result }}
           title: "Pixel Manager Deployment"
           description: |
-            Deployment to Oracle Cloud ${{ job.status }}
+            Deployment to Oracle Cloud ${{ needs.deploy.result }}
             Commit: ${{ github.sha }}
             Branch: ${{ github.ref_name }}
-          color: ${{ job.status == 'success' && '0x00ff00' || '0xff0000' }}
-          ack_no_webhook: true
+          color: ${{ needs.deploy.result == 'success' && '0x00ff00' || '0xff0000' }}
 
