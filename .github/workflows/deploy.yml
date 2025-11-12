@@ -150,17 +150,18 @@ jobs:
           echo "✓ SSH connection test passed!"
 
           echo "=== Creating environment file ==="
-          cat > .env.deploy << EOF
-          OCI_REGISTRY=$OCI_REGISTRY
-          OCI_NAMESPACE=$OCI_NAMESPACE
-          OCI_USERNAME=$OCI_USERNAME
-          OCI_AUTH_TOKEN=$OCI_AUTH_TOKEN
-          IMAGE_NAME=$IMAGE_NAME
-          DISCORD_TOKEN=$DISCORD_TOKEN
-          GUILD_ID=$GUILD_ID
-          SUPABASE_URL=$SUPABASE_URL
-          SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
-          EOF
+          # 환경 변수를 따옴표로 감싸서 안전하게 저장
+          {
+            echo "OCI_REGISTRY='$OCI_REGISTRY'"
+            echo "OCI_NAMESPACE='$OCI_NAMESPACE'"
+            echo "OCI_USERNAME='$OCI_USERNAME'"
+            echo "OCI_AUTH_TOKEN='$OCI_AUTH_TOKEN'"
+            echo "IMAGE_NAME='$IMAGE_NAME'"
+            echo "DISCORD_TOKEN='$DISCORD_TOKEN'"
+            echo "GUILD_ID='$GUILD_ID'"
+            echo "SUPABASE_URL='$SUPABASE_URL'"
+            echo "SUPABASE_ANON_KEY='$SUPABASE_ANON_KEY'"
+          } > .env.deploy
 
           echo "=== Creating deployment script ==="
           cat > deploy.sh << 'SCRIPT_EOF'
