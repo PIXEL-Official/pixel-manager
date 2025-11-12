@@ -1,0 +1,178 @@
+name: Deploy to Oracle Cloud
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  OCI_REGION: ap-seoul-1  # 서울 리전, 필요시 변경
+  IMAGE_NAME: pixel-manager
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test:run
+
+  build-and-push:
+    name: Build and Push to OCIR
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Oracle Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.OCI_REGISTRY }}
+          username: ${{ secrets.OCI_USERNAME }}
+          password: ${{ secrets.OCI_AUTH_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.OCI_REGISTRY }}/${{ secrets.OCI_NAMESPACE }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Oracle Cloud
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup OCI CLI
+        uses: oracle-actions/configure-oci-cli@v1.1
+        with:
+          user-ocid: ${{ secrets.OCI_USER_OCID }}
+          tenancy-ocid: ${{ secrets.OCI_TENANCY_OCID }}
+          region: ${{ env.OCI_REGION }}
+          fingerprint: ${{ secrets.OCI_FINGERPRINT }}
+          api-private-key: ${{ secrets.OCI_API_PRIVATE_KEY }}
+
+      - name: Deploy to Compute Instance
+        env:
+          INSTANCE_IP: ${{ secrets.OCI_INSTANCE_IP }}
+          SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+          OCI_REGISTRY: ${{ secrets.OCI_REGISTRY }}
+          OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
+          OCI_USERNAME: ${{ secrets.OCI_USERNAME }}
+          OCI_AUTH_TOKEN: ${{ secrets.OCI_AUTH_TOKEN }}
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          GUILD_ID: ${{ secrets.GUILD_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          # SSH 키 설정
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $INSTANCE_IP >> ~/.ssh/known_hosts
+
+          # 컨테이너 배포 스크립트 생성
+          cat > deploy.sh << 'EOF'
+          #!/bin/bash
+          set -e
+
+          echo "Logging in to Oracle Container Registry..."
+          echo "$OCI_AUTH_TOKEN" | docker login $OCI_REGISTRY -u "$OCI_USERNAME" --password-stdin
+
+          echo "Pulling latest image..."
+          docker pull $OCI_REGISTRY/$OCI_NAMESPACE/$IMAGE_NAME:latest
+
+          echo "Stopping existing container..."
+          docker stop pixel-manager || true
+          docker rm pixel-manager || true
+
+          echo "Starting new container..."
+          docker run -d \
+            --name pixel-manager \
+            --restart unless-stopped \
+            -e DISCORD_TOKEN="$DISCORD_TOKEN" \
+            -e GUILD_ID="$GUILD_ID" \
+            -e SUPABASE_URL="$SUPABASE_URL" \
+            -e SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+            $OCI_REGISTRY/$OCI_NAMESPACE/$IMAGE_NAME:latest
+
+          echo "Cleaning up old images..."
+          docker image prune -af
+
+          echo "Deployment completed successfully!"
+          docker ps | grep pixel-manager
+          EOF
+
+          # 스크립트를 서버에 복사하고 실행
+          scp -o StrictHostKeyChecking=no deploy.sh ubuntu@$INSTANCE_IP:/tmp/deploy.sh
+          ssh -o StrictHostKeyChecking=no ubuntu@$INSTANCE_IP "bash /tmp/deploy.sh"
+
+      - name: Verify deployment
+        env:
+          INSTANCE_IP: ${{ secrets.OCI_INSTANCE_IP }}
+        run: |
+          echo "Waiting for container to start..."
+          sleep 10
+          
+          echo "Checking container status..."
+          ssh -o StrictHostKeyChecking=no ubuntu@$INSTANCE_IP "docker logs --tail 50 pixel-manager"
+
+  notify:
+    name: Send Notification
+    runs-on: ubuntu-latest
+    needs: [test, build-and-push, deploy]
+    if: always()
+    steps:
+      - name: Send Discord notification
+        if: always()
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          status: ${{ job.status }}
+          title: "Pixel Manager Deployment"
+          description: |
+            Deployment to Oracle Cloud ${{ job.status }}
+            Commit: ${{ github.sha }}
+            Branch: ${{ github.ref_name }}
+          color: ${{ job.status == 'success' && '0x00ff00' || '0xff0000' }}
+

@@ -193,6 +193,48 @@ pixel-manager/
 | `SUPABASE_URL` | Supabase project URL | Yes |
 | `SUPABASE_ANON_KEY` | Supabase anonymous key | Yes |
 
+## Deployment
+
+### Docker Deployment
+
+Build and run with Docker:
+
+```bash
+# Build the image
+docker build -t pixel-manager .
+
+# Run the container
+docker run -d \
+  --name pixel-manager \
+  --restart unless-stopped \
+  -e DISCORD_TOKEN="your_token" \
+  -e GUILD_ID="your_guild_id" \
+  -e SUPABASE_URL="your_supabase_url" \
+  -e SUPABASE_ANON_KEY="your_supabase_key" \
+  pixel-manager
+```
+
+### Oracle Cloud Deployment
+
+This project includes GitHub Actions workflow for automatic deployment to Oracle Cloud Infrastructure (OCI).
+
+#### Quick Start
+
+1. Set up OCI Compute Instance and Container Registry
+2. Configure GitHub Secrets (see [Deployment Guide](docs/DEPLOYMENT.md))
+3. Push to `main` branch - automatic deployment will start
+
+#### Manual Deployment
+
+Trigger deployment manually from GitHub Actions:
+- Go to **Actions** tab
+- Select **Deploy to Oracle Cloud**
+- Click **Run workflow**
+
+#### Full Documentation
+
+For detailed setup instructions, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
 ## Contributing
 
 1. Fork the repository

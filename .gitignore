@@ -35,3 +35,16 @@ coverage/
 # Temporary files
 *.tmp
 *.temp
+
+# Oracle Cloud Infrastructure
+.oci/
+oci_api_key*.pem
+deploy.sh
+
+# SSH Keys
+*.pem
+id_rsa*
+!.github/
+
+# Docker
+.dockerignore
