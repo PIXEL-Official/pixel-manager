@@ -37,19 +37,33 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   } catch (error) {
     logger.error('Error executing kicksettings command', error);
     if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        content: '명령어 실행 중 오류가 발생했습니다.',
-        ephemeral: true
-      }).catch(() => {
-        // 이미 응답된 경우 무시
-      });
-    } else if (interaction.deferred) {
-      await interaction.followUp({
-        content: '명령어 실행 중 오류가 발생했습니다.',
-        ephemeral: true
-      }).catch(() => {
+      try {
+        const replyPromise = interaction.reply({
+          content: '명령어 실행 중 오류가 발생했습니다.',
+          ephemeral: true
+        });
+        if (replyPromise && typeof replyPromise.catch === 'function') {
+          await replyPromise.catch(() => {
+            // 이미 응답된 경우 무시
+          });
+        }
+      } catch (err) {
         // 에러 무시
-      });
+      }
+    } else if (interaction.deferred) {
+      try {
+        const followUpPromise = interaction.followUp({
+          content: '명령어 실행 중 오류가 발생했습니다.',
+          ephemeral: true
+        });
+        if (followUpPromise && typeof followUpPromise.catch === 'function') {
+          await followUpPromise.catch(() => {
+            // 에러 무시
+          });
+        }
+      } catch (err) {
+        // 에러 무시
+      }
     }
   }
 }
@@ -97,9 +111,16 @@ async function handleView(interaction: ChatInputCommandInteraction) {
     .setTimestamp();
 
   if (!interaction.replied && !interaction.deferred) {
-    await interaction.reply({ embeds: [embed] }).catch(() => {
-      // 이미 응답된 경우 무시
-    });
+    try {
+      const replyPromise = interaction.reply({ embeds: [embed] });
+      if (replyPromise && typeof replyPromise.catch === 'function') {
+        await replyPromise.catch(() => {
+          // 이미 응답된 경우 무시
+        });
+      }
+    } catch (err) {
+      // 에러 무시
+    }
   }
 }
 
@@ -179,12 +200,19 @@ async function handleSet(interaction: ChatInputCommandInteraction) {
 
   if (!updatedSettings) {
     if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        content: '⚠️ 설정 업데이트 중 오류가 발생했습니다. 다시 시도해주세요.',
-        ephemeral: true
-      }).catch(() => {
-        // 이미 응답된 경우 무시
-      });
+      try {
+        const replyPromise = interaction.reply({
+          content: '⚠️ 설정 업데이트 중 오류가 발생했습니다. 다시 시도해주세요.',
+          ephemeral: true
+        });
+        if (replyPromise && typeof replyPromise.catch === 'function') {
+          await replyPromise.catch(() => {
+            // 이미 응답된 경우 무시
+          });
+        }
+      } catch (err) {
+        // 에러 무시
+      }
     }
     return;
   }
@@ -223,9 +251,16 @@ async function handleSet(interaction: ChatInputCommandInteraction) {
     .setTimestamp();
 
   if (!interaction.replied && !interaction.deferred) {
-    await interaction.reply({ embeds: [embed] }).catch(() => {
-      // 이미 응답된 경우 무시
-    });
+    try {
+      const replyPromise = interaction.reply({ embeds: [embed] });
+      if (replyPromise && typeof replyPromise.catch === 'function') {
+        await replyPromise.catch(() => {
+          // 이미 응답된 경우 무시
+        });
+      }
+    } catch (err) {
+      // 에러 무시
+    }
   }
 }
 
@@ -279,9 +314,16 @@ async function handleReset(interaction: ChatInputCommandInteraction) {
     .setTimestamp();
 
   if (!interaction.replied && !interaction.deferred) {
-    await interaction.reply({ embeds: [embed] }).catch(() => {
-      // 이미 응답된 경우 무시
-    });
+    try {
+      const replyPromise = interaction.reply({ embeds: [embed] });
+      if (replyPromise && typeof replyPromise.catch === 'function') {
+        await replyPromise.catch(() => {
+          // 이미 응답된 경우 무시
+        });
+      }
+    } catch (err) {
+      // 에러 무시
+    }
   }
 }
 
