@@ -155,6 +155,7 @@ async function handleSet(interaction: ChatInputCommandInteraction) {
     kick_days: kickDays ?? currentSettings.kick_days,
     warning_days: warningDays ?? currentSettings.warning_days,
     required_minutes: requiredMinutes ?? currentSettings.required_minutes,
+    required_camera_minutes: currentSettings.required_camera_minutes,
     require_camera_on: requireCameraOn ?? currentSettings.require_camera_on,
     require_voice_presence: requireVoicePresence ?? currentSettings.require_voice_presence,
   };
@@ -214,6 +215,7 @@ async function handleReset(interaction: ChatInputCommandInteraction) {
     kick_days: 7,
     warning_days: 6,
     required_minutes: 30,
+    required_camera_minutes: 0,
     require_camera_on: false,
     require_voice_presence: false,
   };

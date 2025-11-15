@@ -102,6 +102,7 @@ describe('KickSettingsRepository', () => {
         kick_days: 10,
         warning_days: 8,
         required_minutes: 60,
+        required_camera_minutes: 0,
         require_camera_on: true,
         require_voice_presence: true,
       };
@@ -122,6 +123,7 @@ describe('KickSettingsRepository', () => {
         kick_days: 10,
         warning_days: 8,
         required_minutes: 60,
+        required_camera_minutes: 0,
         require_camera_on: true,
         require_voice_presence: true,
       };

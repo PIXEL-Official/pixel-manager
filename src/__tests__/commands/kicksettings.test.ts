@@ -47,6 +47,7 @@ describe('kicksettings command', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        required_camera_minutes: 0,
         require_camera_on: false,
         require_voice_presence: false,
       });
@@ -76,6 +77,7 @@ describe('kicksettings command', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        required_camera_minutes: 0,
         require_camera_on: false,
         require_voice_presence: false,
       });
@@ -93,6 +95,7 @@ describe('kicksettings command', () => {
         kick_days: 10,
         warning_days: 6,
         required_minutes: 30,
+        required_camera_minutes: 0,
         require_camera_on: false,
         require_voice_presence: false,
       });
@@ -104,6 +107,7 @@ describe('kicksettings command', () => {
         kick_days: 10,
         warning_days: 6,
         required_minutes: 30,
+        required_camera_minutes: 0,
         require_camera_on: false,
         require_voice_presence: false,
       });
@@ -124,6 +128,7 @@ describe('kicksettings command', () => {
         kick_days: 10,
         warning_days: 8,
         required_minutes: 60,
+        required_camera_minutes: 0,
         require_camera_on: false,
         require_voice_presence: false,
       });
@@ -135,6 +140,7 @@ describe('kicksettings command', () => {
         kick_days: 10,
         warning_days: 8,
         required_minutes: 60,
+        required_camera_minutes: 0,
         require_camera_on: false,
         require_voice_presence: false,
       });
@@ -153,6 +159,7 @@ describe('kicksettings command', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        required_camera_minutes: 0,
         require_camera_on: true,
         require_voice_presence: true,
       });
@@ -164,6 +171,7 @@ describe('kicksettings command', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        required_camera_minutes: 0,
         require_camera_on: true,
         require_voice_presence: true,
       });
@@ -227,6 +235,7 @@ describe('kicksettings command', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        required_camera_minutes: 0,
         require_camera_on: false,
         require_voice_presence: false,
       });
@@ -238,6 +247,7 @@ describe('kicksettings command', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        required_camera_minutes: 0,
         require_camera_on: false,
         require_voice_presence: false,
       });

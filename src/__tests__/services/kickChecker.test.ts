@@ -85,6 +85,7 @@ describe('KickChecker - Core Logic', () => {
       kick_days: 7,
       warning_days: 6,
       required_minutes: 30,
+      required_camera_minutes: 0,
       require_camera_on: false,
       require_voice_presence: false,
     });
@@ -107,6 +108,7 @@ describe('KickChecker - Core Logic', () => {
         joined_at: '2025-01-01T00:00:00Z',
         last_voice_time: '2025-01-02T00:00:00Z',
         total_minutes: 20, // 30분 미달
+        camera_on_minutes: 0,
         week_start: '2025-01-01T00:00:00Z',
         warning_sent: false,
         status: 'active' as const,
@@ -144,6 +146,7 @@ describe('KickChecker - Core Logic', () => {
         joined_at: '2025-01-01T00:00:00Z',
         last_voice_time: '2025-01-02T00:00:00Z',
         total_minutes: 35, // 30분 이상
+        camera_on_minutes: 0,
         week_start: '2025-01-01T00:00:00Z',
         warning_sent: false,
         status: 'active' as const,
@@ -177,6 +180,7 @@ describe('KickChecker - Core Logic', () => {
         joined_at: '2025-01-01T00:00:00Z',
         last_voice_time: '2025-01-02T00:00:00Z',
         total_minutes: 15, // 30분 미달
+        camera_on_minutes: 0,
         week_start: '2025-01-01T00:00:00Z',
         warning_sent: false, // 경고 미발송
         status: 'active' as const,
@@ -216,6 +220,7 @@ describe('KickChecker - Core Logic', () => {
         joined_at: '2025-01-01T00:00:00Z',
         last_voice_time: '2025-01-02T00:00:00Z',
         total_minutes: 15,
+        camera_on_minutes: 0,
         week_start: '2025-01-01T00:00:00Z',
         warning_sent: true, // 이미 경고 발송됨
         status: 'warned' as const,
@@ -246,6 +251,7 @@ describe('KickChecker - Core Logic', () => {
         joined_at: '2025-01-01T00:00:00Z',
         last_voice_time: '2025-01-02T00:00:00Z',
         total_minutes: 40, // 30분 이상
+        camera_on_minutes: 0,
         week_start: '2025-01-01T00:00:00Z',
         warning_sent: false,
         status: 'active' as const,
@@ -280,6 +286,7 @@ describe('KickChecker - Core Logic', () => {
           joined_at: '2025-01-01T00:00:00Z',
           last_voice_time: '2025-01-02T00:00:00Z',
         total_minutes: 10,
+        camera_on_minutes: 0,
         week_start: '2025-01-01T00:00:00Z',
         warning_sent: false,
         status: 'active' as const,
@@ -314,6 +321,7 @@ describe('KickChecker - Core Logic', () => {
         joined_at: '2025-01-01T00:00:00Z',
         last_voice_time: '2025-01-08T00:00:00Z',
         total_minutes: 20, // DB에 저장된 시간
+        camera_on_minutes: 0,
         week_start: '2025-01-01T00:00:00Z',
         warning_sent: false,
         status: 'active' as const,
@@ -353,6 +361,7 @@ describe('KickChecker - Core Logic', () => {
           joined_at: '2025-01-01T00:00:00Z',
           last_voice_time: '2025-01-08T00:00:00Z',
         total_minutes: 40,
+        camera_on_minutes: 0,
         week_start: '2025-01-01T00:00:00Z',
         warning_sent: false,
         status: 'active' as const,
@@ -366,6 +375,7 @@ describe('KickChecker - Core Logic', () => {
         joined_at: '2025-01-01T00:00:00Z',
         last_voice_time: '2025-01-08T00:00:00Z',
         total_minutes: 10,
+        camera_on_minutes: 0,
         week_start: '2025-01-01T00:00:00Z',
         warning_sent: false,
         status: 'active' as const,
