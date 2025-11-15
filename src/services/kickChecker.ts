@@ -11,7 +11,7 @@ import {
   getDaysUntilDeadlineWithDays,
 } from '../utils/dateHelper';
 import { logger } from '../utils/logger';
-import { KickSettings } from '../models/types';
+import { KickSettings, User } from '../models/types';
 
 export class KickChecker {
   private client: Client;
@@ -43,6 +43,26 @@ export class KickChecker {
     logger.info(`Kick settings refreshed for guild ${this.guildId}`, this.settings);
   }
 
+  private evaluateRequirements(
+    user: User,
+    settings: KickSettings,
+    totalMinutes: number,
+    referenceDate: Date
+  ) {
+    const meetsMinutes = meetsRequirement(totalMinutes, settings.required_minutes);
+    const meetsVoice = !settings.require_voice_presence || user.last_voice_time !== null;
+    const meetsCamera =
+      !settings.require_camera_on ||
+      (user.last_camera_time ? parseISODate(user.last_camera_time) >= referenceDate : false);
+
+    return {
+      meetsMinutes,
+      meetsVoice,
+      meetsCamera,
+      meetsAll: meetsMinutes && meetsVoice && meetsCamera,
+    };
+  }
+
   /**
    * 주기적으로 실행되는 체크 로직
    */
@@ -61,21 +81,30 @@ export class KickChecker {
           ? parseISODate(user.last_voice_time)
           : parseISODate(user.joined_at);
 
+        const currentSessionMinutes = this.voiceTracker.getCurrentSessionMinutes(user.user_id);
+        const actualTotalMinutes = user.total_minutes + currentSessionMinutes;
+        const requirementStatus = this.evaluateRequirements(
+          user as User,
+          settings,
+          actualTotalMinutes,
+          referenceDate
+        );
+
         const kickDaysPassed = hasDaysPassed(referenceDate, settings.kick_days);
         const isWarning = isWarningTimeWithDays(
           referenceDate,
           settings.warning_days,
           settings.kick_days
         );
-        const meetsReq = meetsRequirement(user.total_minutes, settings.required_minutes);
 
         // kick_days 경과 + required_minutes 미달 = 강퇴
-        if (kickDaysPassed && !meetsReq) {
+        if (kickDaysPassed && !requirementStatus.meetsAll) {
           const kicked = await this.kickUser(
             user.user_id,
             user.username,
-            user.total_minutes,
-            settings
+            actualTotalMinutes,
+            settings,
+            requirementStatus
           );
           if (kicked) {
             usersKicked++;
@@ -86,13 +115,14 @@ export class KickChecker {
           }
         }
         // warning_days 경과 + required_minutes 미달 + 경고 미발송 = 경고
-        else if (isWarning && !meetsReq && !user.warning_sent) {
+        else if (isWarning && !requirementStatus.meetsAll && !user.warning_sent) {
           const warned = await this.sendWarning(
             user.user_id,
             user.username,
-            user.total_minutes,
+            actualTotalMinutes,
             referenceDate,
-            settings
+            settings,
+            requirementStatus
           );
           if (warned) {
             usersWarned++;
@@ -119,7 +149,8 @@ export class KickChecker {
     username: string,
     totalMinutes: number,
     referenceDate: Date,
-    settings: KickSettings
+    settings: KickSettings,
+    requirements: { meetsMinutes: boolean; meetsVoice: boolean; meetsCamera: boolean }
   ): Promise<boolean> {
     try {
       const guild = await this.client.guilds.fetch(this.guildId);
@@ -131,17 +162,37 @@ export class KickChecker {
       }
 
       const daysRemaining = getDaysUntilDeadlineWithDays(referenceDate, settings.kick_days);
-      const minutesNeeded = settings.required_minutes - totalMinutes;
+      const minutesNeeded = Math.max(0, settings.required_minutes - totalMinutes);
+
+      const details: string[] = [];
+
+      if (!requirements.meetsMinutes) {
+        details.push(
+          `- 현재 활동 시간: ${formatMinutes(totalMinutes)}`,
+          `- 필요 시간: ${settings.required_minutes}분`,
+          `- 부족한 시간: ${formatMinutes(minutesNeeded)}`
+        );
+      }
+
+      if (settings.require_voice_presence && !requirements.meetsVoice) {
+        details.push('- 음성 채널 참여 이력이 필요합니다.');
+      }
+
+      if (settings.require_camera_on && !requirements.meetsCamera) {
+        details.push('- 추적된 음성 채널에서 카메라 사용 기록이 필요합니다.');
+      }
+
+      const detailsText = details.length > 0
+        ? details.join('\n')
+        : '- 설정된 조건을 충족하지 못했습니다.';
 
       const warningMessage = `
 ⚠️ **스터디 활동 경고**
 
 안녕하세요, ${username}님!
 
-현재 주간 음성 채널 활동 시간이 부족합니다:
-- 현재 활동 시간: ${formatMinutes(totalMinutes)}
-- 필요 시간: ${settings.required_minutes}분
-- 부족한 시간: ${formatMinutes(minutesNeeded)}
+현재 설정된 조건을 충족하지 못했습니다:
+${detailsText}
 - 남은 기간: 약 ${daysRemaining}일
 
 **${daysRemaining}일 이내에 ${formatMinutes(minutesNeeded)}을 채우지 못하면 자동으로 서버에서 퇴장 처리됩니다.**
@@ -165,7 +216,8 @@ export class KickChecker {
     userId: string,
     username: string,
     totalMinutes: number,
-    settings: KickSettings
+    settings: KickSettings,
+    requirements: { meetsMinutes: boolean; meetsVoice: boolean; meetsCamera: boolean }
   ): Promise<boolean> {
     try {
       const guild = await this.client.guilds.fetch(this.guildId);
@@ -176,19 +228,44 @@ export class KickChecker {
         return false;
       }
 
-      const kickReason = `주간 활동 시간 미달 (${formatMinutes(totalMinutes)} / ${settings.required_minutes}분)`;
+      const reasons: string[] = [];
+      if (!requirements.meetsMinutes) {
+        reasons.push(`주간 활동 시간 미달 (${formatMinutes(totalMinutes)} / ${settings.required_minutes}분)`);
+      }
+      if (settings.require_voice_presence && !requirements.meetsVoice) {
+        reasons.push('음성 채널 참여 이력 부족');
+      }
+      if (settings.require_camera_on && !requirements.meetsCamera) {
+        reasons.push('카메라 사용 이력 부족');
+      }
+      const kickReason = reasons.join(' | ') || '설정된 조건 미충족';
 
       // 강퇴 전 DM 발송 시도
       try {
+        const kickDetails: string[] = [];
+        if (!requirements.meetsMinutes) {
+          kickDetails.push(
+            `- 최종 활동 시간: ${formatMinutes(totalMinutes)}`,
+            `- 필요 시간: ${settings.required_minutes}분`
+          );
+        }
+        if (settings.require_voice_presence && !requirements.meetsVoice) {
+          kickDetails.push('- 음성 채널 참여 이력이 부족했습니다.');
+        }
+        if (settings.require_camera_on && !requirements.meetsCamera) {
+          kickDetails.push('- 카메라 사용 기록이 확인되지 않았습니다.');
+        }
+
+        const detailText = kickDetails.length > 0
+          ? kickDetails.join('\n')
+          : '- 설정된 조건을 충족하지 못했습니다.';
+
         const kickMessage = `
 🚫 **서버 퇴장 안내**
 
 ${username}님, 안녕하세요.
 
-주간 음성 채널 활동 시간(${settings.required_minutes}분) 미달로 인해 서버에서 자동 퇴장 처리되었습니다.
-
-- 최종 활동 시간: ${formatMinutes(totalMinutes)}
-- 필요 시간: ${settings.required_minutes}분
+${detailText}
 
 다시 참여를 원하시면 관리자에게 문의해 주세요.
         `.trim();
@@ -230,14 +307,23 @@ ${username}님, 안녕하세요.
         settings.warning_days,
         settings.kick_days
       );
-      const meetsReq = meetsRequirement(user.total_minutes, settings.required_minutes);
 
-      if (kickDaysPassed && !meetsReq) {
+      const currentSessionMinutes = this.voiceTracker.getCurrentSessionMinutes(user.user_id);
+      const actualTotalMinutes = user.total_minutes + currentSessionMinutes;
+      const requirements = this.evaluateRequirements(
+        user as User,
+        settings,
+        actualTotalMinutes,
+        referenceDate
+      );
+
+      if (kickDaysPassed && !requirements.meetsAll) {
         const kicked = await this.kickUser(
           user.user_id,
           user.username,
-          user.total_minutes,
-          settings
+          actualTotalMinutes,
+          settings,
+          requirements
         );
         if (kicked) {
           usersKicked++;
@@ -245,13 +331,14 @@ ${username}님, 안녕하세요.
             status: 'kicked',
           });
         }
-      } else if (isWarning && !meetsReq && !user.warning_sent) {
+      } else if (isWarning && !requirements.meetsAll && !user.warning_sent) {
         const warned = await this.sendWarning(
           user.user_id,
           user.username,
-          user.total_minutes,
+          actualTotalMinutes,
           referenceDate,
-          settings
+          settings,
+          requirements
         );
         if (warned) {
           usersWarned++;
@@ -282,6 +369,8 @@ ${username}님, 안녕하세요.
     status: string;
     daysUntilDeadline: number;
     meetsRequirement: boolean;
+    meetsCameraRequirement: boolean;
+    meetsVoiceRequirement: boolean;
     referenceDate: Date;
     lastVoiceTime: string | null;
     lastMessageTime: string | null;
@@ -300,7 +389,12 @@ ${username}님, 안녕하세요.
       const actualTotalMinutes = user.total_minutes + currentSessionMinutes;
 
       const daysUntilDeadline = getDaysUntilDeadlineWithDays(referenceDate, settings.kick_days);
-      const meetsReq = meetsRequirement(actualTotalMinutes, settings.required_minutes);
+      const requirementStatus = this.evaluateRequirements(
+        user as User,
+        settings,
+        actualTotalMinutes,
+        referenceDate
+      );
 
       return {
         userId: user.user_id,
@@ -310,7 +404,9 @@ ${username}님, 안녕하세요.
         actualTotalMinutes,
         status: user.status,
         daysUntilDeadline,
-        meetsRequirement: meetsReq,
+        meetsRequirement: requirementStatus.meetsAll,
+        meetsCameraRequirement: requirementStatus.meetsCamera,
+        meetsVoiceRequirement: requirementStatus.meetsVoice,
         referenceDate,
         lastVoiceTime: user.last_voice_time,
         lastMessageTime: user.last_message_time,

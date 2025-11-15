@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { KickChecker } from '../../services/kickChecker';
 import { VoiceTracker } from '../../services/voiceTracker';
 import { userRepository } from '../../repositories/userRepository';
+import { kickSettingsRepository } from '../../repositories/kickSettingsRepository';
 import * as dateHelper from '../../utils/dateHelper';
 
 // Mock Supabase first to avoid initialization errors
@@ -23,6 +24,12 @@ vi.mock('../../repositories/userRepository', () => ({
   userRepository: {
     getUsersToCheck: vi.fn(),
     updateUser: vi.fn(),
+  },
+}));
+
+vi.mock('../../repositories/kickSettingsRepository', () => ({
+  kickSettingsRepository: {
+    getSettings: vi.fn(),
   },
 }));
 
@@ -49,7 +56,9 @@ describe('KickChecker - Core Logic', () => {
   let mockMember: any;
   const testGuildId = 'test-guild-123';
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
     // Mock Discord.js client
     mockMember = {
       send: vi.fn().mockResolvedValue(undefined),
@@ -71,7 +80,14 @@ describe('KickChecker - Core Logic', () => {
     mockVoiceTracker = new VoiceTracker(testGuildId);
     kickChecker = new KickChecker(mockClient, testGuildId, mockVoiceTracker);
 
-    vi.clearAllMocks();
+    vi.mocked(kickSettingsRepository.getSettings).mockResolvedValue({
+      guild_id: testGuildId,
+      kick_days: 7,
+      warning_days: 6,
+      required_minutes: 30,
+      require_camera_on: false,
+      require_voice_presence: false,
+    });
   });
 
   describe('Kick Logic - 7일 경과 + 30분 미달', () => {
@@ -95,6 +111,7 @@ describe('KickChecker - Core Logic', () => {
         warning_sent: false,
         status: 'active' as const,
         last_message_time: null,
+        last_camera_time: null,
       }];
 
       vi.mocked(userRepository.getUsersToCheck).mockResolvedValue(mockUsers);
@@ -131,6 +148,7 @@ describe('KickChecker - Core Logic', () => {
         warning_sent: false,
         status: 'active' as const,
         last_message_time: null,
+        last_camera_time: null,
       }];
 
       vi.mocked(userRepository.getUsersToCheck).mockResolvedValue(mockUsers);
@@ -163,6 +181,7 @@ describe('KickChecker - Core Logic', () => {
         warning_sent: false, // 경고 미발송
         status: 'active' as const,
         last_message_time: null,
+        last_camera_time: null,
       }];
 
       vi.mocked(userRepository.getUsersToCheck).mockResolvedValue(mockUsers);
@@ -201,6 +220,7 @@ describe('KickChecker - Core Logic', () => {
         warning_sent: true, // 이미 경고 발송됨
         status: 'warned' as const,
         last_message_time: null,
+        last_camera_time: null,
       }];
 
       vi.mocked(userRepository.getUsersToCheck).mockResolvedValue(mockUsers);
@@ -230,6 +250,7 @@ describe('KickChecker - Core Logic', () => {
         warning_sent: false,
         status: 'active' as const,
         last_message_time: null,
+        last_camera_time: null,
       }];
 
       vi.mocked(userRepository.getUsersToCheck).mockResolvedValue(mockUsers);
@@ -258,12 +279,13 @@ describe('KickChecker - Core Logic', () => {
           username: 'KickUser',
           joined_at: '2025-01-01T00:00:00Z',
           last_voice_time: '2025-01-02T00:00:00Z',
-          total_minutes: 10,
-          week_start: '2025-01-01T00:00:00Z',
-          warning_sent: false,
-          status: 'active' as const,
-          last_message_time: null,
-        },
+        total_minutes: 10,
+        week_start: '2025-01-01T00:00:00Z',
+        warning_sent: false,
+        status: 'active' as const,
+        last_message_time: null,
+        last_camera_time: null,
+      },
       ];
 
       vi.mocked(userRepository.getUsersToCheck).mockResolvedValue(mockUsers);
@@ -296,6 +318,7 @@ describe('KickChecker - Core Logic', () => {
         warning_sent: false,
         status: 'active' as const,
         last_message_time: null,
+        last_camera_time: null,
       }];
 
       vi.mocked(userRepository.getUsersToCheck).mockResolvedValue(mockUsers);
@@ -329,24 +352,26 @@ describe('KickChecker - Core Logic', () => {
           username: 'SafeUser',
           joined_at: '2025-01-01T00:00:00Z',
           last_voice_time: '2025-01-08T00:00:00Z',
-          total_minutes: 40,
-          week_start: '2025-01-01T00:00:00Z',
-          warning_sent: false,
-          status: 'active' as const,
-          last_message_time: null,
-        },
-        {
-          user_id: 'user-danger',
-          guild_id: testGuildId,
-          username: 'DangerUser',
-          joined_at: '2025-01-01T00:00:00Z',
-          last_voice_time: '2025-01-08T00:00:00Z',
-          total_minutes: 10,
-          week_start: '2025-01-01T00:00:00Z',
-          warning_sent: false,
-          status: 'active' as const,
-          last_message_time: null,
-        },
+        total_minutes: 40,
+        week_start: '2025-01-01T00:00:00Z',
+        warning_sent: false,
+        status: 'active' as const,
+        last_message_time: null,
+        last_camera_time: null,
+      },
+      {
+        user_id: 'user-danger',
+        guild_id: testGuildId,
+        username: 'DangerUser',
+        joined_at: '2025-01-01T00:00:00Z',
+        last_voice_time: '2025-01-08T00:00:00Z',
+        total_minutes: 10,
+        week_start: '2025-01-01T00:00:00Z',
+        warning_sent: false,
+        status: 'active' as const,
+        last_message_time: null,
+        last_camera_time: null,
+      },
       ];
 
       vi.mocked(userRepository.getUsersToCheck).mockResolvedValue(mockUsers);

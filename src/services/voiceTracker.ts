@@ -6,8 +6,14 @@ import { calculateMinutesBetween, getWeekStart } from '../utils/dateHelper';
 import { logger } from '../utils/logger';
 import { User } from '../models/types';
 
-// 현재 음성 채널에 있는 유저들의 입장 시간을 추적
-const activeVoiceSessions = new Map<string, Date>();
+interface ActiveVoiceSession {
+  joinTime: Date;
+  channelId: string;
+  cameraOn: boolean;
+}
+
+// 현재 음성 채널에 있는 유저들의 입장 시간과 카메라 상태를 추적
+const activeVoiceSessions = new Map<string, ActiveVoiceSession>();
 
 export class VoiceTracker {
   private guildId: string;
@@ -66,7 +72,13 @@ export class VoiceTracker {
 
     // 추적 채널에 입장
     if (!wasInTrackedChannel && isInTrackedChannel) {
-      await this.handleVoiceJoin(userId, guildId, username, newState.channelId!);
+      await this.handleVoiceJoin(
+        userId,
+        guildId,
+        username,
+        newState.channelId!,
+        newState.selfVideo ?? false
+      );
     }
     // 추적 채널에서 퇴장
     else if (wasInTrackedChannel && !isInTrackedChannel) {
@@ -75,16 +87,43 @@ export class VoiceTracker {
     // 추적 채널에서 다른 추적 채널로 이동 (퇴장 후 입장으로 처리)
     else if (wasInTrackedChannel && isInTrackedChannel && oldState.channelId !== newState.channelId) {
       await this.handleVoiceLeave(userId, guildId, username, oldState.channelId!);
-      await this.handleVoiceJoin(userId, guildId, username, newState.channelId!);
+      await this.handleVoiceJoin(
+        userId,
+        guildId,
+        username,
+        newState.channelId!,
+        newState.selfVideo ?? false
+      );
+    }
+
+    // 카메라 상태 업데이트 (동일 채널 내에서 변경될 수 있음)
+    const session = activeVoiceSessions.get(userId);
+    if (isInTrackedChannel && session && session.cameraOn !== (newState.selfVideo ?? false)) {
+      session.cameraOn = newState.selfVideo ?? false;
+      activeVoiceSessions.set(userId, session);
+
+      if (session.cameraOn) {
+        await this.recordCameraUsage(userId, guildId);
+      }
     }
   }
 
   /**
    * 음성 채널 입장 처리
    */
-  private async handleVoiceJoin(userId: string, guildId: string, username: string, channelId: string): Promise<void> {
+  private async handleVoiceJoin(
+    userId: string,
+    guildId: string,
+    username: string,
+    channelId: string,
+    cameraOn: boolean
+  ): Promise<void> {
     const now = new Date();
-    activeVoiceSessions.set(userId, now);
+    activeVoiceSessions.set(userId, {
+      joinTime: now,
+      channelId,
+      cameraOn,
+    });
     logger.voiceJoin(userId, username, channelId);
 
     // 유저가 DB에 없으면 생성하지 않음 (서버 가입 시점에 생성됨)
@@ -94,6 +133,10 @@ export class VoiceTracker {
       await userRepository.updateUser(userId, guildId, {
         last_voice_time: now.toISOString(),
       });
+
+      if (cameraOn) {
+        await this.recordCameraUsage(userId, guildId);
+      }
     }
   }
 
@@ -101,19 +144,19 @@ export class VoiceTracker {
    * 음성 채널 퇴장 처리
    */
   private async handleVoiceLeave(userId: string, guildId: string, username: string, channelId: string): Promise<void> {
-    const joinTime = activeVoiceSessions.get(userId);
-    if (!joinTime) {
+    const session = activeVoiceSessions.get(userId);
+    if (!session) {
       logger.warn(`User ${username} left but no join time recorded`);
       return;
     }
 
     const now = new Date();
-    const durationMinutes = calculateMinutesBetween(joinTime, now);
+    const durationMinutes = calculateMinutesBetween(session.joinTime, now);
 
     // 세션 기록
     await voiceSessionRepository.createSession({
       user_id: userId,
-      joined_at: joinTime.toISOString(),
+      joined_at: session.joinTime.toISOString(),
       left_at: now.toISOString(),
       duration_minutes: durationMinutes,
     });
@@ -147,6 +190,12 @@ export class VoiceTracker {
     activeVoiceSessions.delete(userId);
   }
 
+  private async recordCameraUsage(userId: string, guildId: string): Promise<void> {
+    await userRepository.updateUser(userId, guildId, {
+      last_camera_time: new Date().toISOString(),
+    });
+  }
+
   /**
    * 새 멤버를 DB에 추가
    */
@@ -166,6 +215,7 @@ export class VoiceTracker {
       joined_at: joinedAt.toISOString(),
       last_voice_time: null,
       last_message_time: null,
+      last_camera_time: null,
       total_minutes: 0,
       week_start: weekStart.toISOString(),
       warning_sent: false,
@@ -194,7 +244,11 @@ export class VoiceTracker {
       if (this.isTrackedChannel(channelId) && channel.isVoiceBased()) {
         // 해당 채널의 멤버들 순회
         for (const [userId, member] of channel.members) {
-          activeVoiceSessions.set(userId, now);
+          activeVoiceSessions.set(userId, {
+            joinTime: now,
+            channelId,
+            cameraOn: member.voice?.selfVideo ?? false,
+          });
           count++;
         }
       }
@@ -214,7 +268,7 @@ export class VoiceTracker {
    * 특정 유저의 현재 세션 조회
    */
   getActiveSession(userId: string): Date | undefined {
-    return activeVoiceSessions.get(userId);
+    return activeVoiceSessions.get(userId)?.joinTime;
   }
 
   /**
@@ -222,18 +276,32 @@ export class VoiceTracker {
    * 접속 중이 아니면 0 반환
    */
   getCurrentSessionMinutes(userId: string): number {
-    const joinTime = activeVoiceSessions.get(userId);
-    if (!joinTime) return 0;
+    const session = activeVoiceSessions.get(userId);
+    if (!session) return 0;
 
     const now = new Date();
-    return calculateMinutesBetween(joinTime, now);
+    return calculateMinutesBetween(session.joinTime, now);
   }
 
   /**
    * 모든 활성 세션 맵 반환 (현재 접속 중인 유저들)
    */
-  getAllActiveSessions(): Map<string, Date> {
+  getAllActiveSessions(): Map<string, ActiveVoiceSession> {
     return activeVoiceSessions;
+  }
+
+  /**
+   * 현재 추적 중인 음성 채널에 있는지 확인
+   */
+  isUserInVoiceChannel(userId: string): boolean {
+    return activeVoiceSessions.has(userId);
+  }
+
+  /**
+   * 현재 카메라가 켜져 있는지 확인
+   */
+  isCameraOn(userId: string): boolean {
+    return activeVoiceSessions.get(userId)?.cameraOn ?? false;
   }
 }
 

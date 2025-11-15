@@ -95,6 +95,18 @@ export const commands = {
             .setMinValue(1)
             .setRequired(false)
         )
+        .addBooleanOption(option =>
+          option
+            .setName('require_camera_on')
+            .setDescription('카메라 사용을 필수 조건으로 설정')
+            .setRequired(false)
+        )
+        .addBooleanOption(option =>
+          option
+            .setName('require_voice_presence')
+            .setDescription('음성 채널 참여를 필수 조건으로 설정')
+            .setRequired(false)
+        )
     )
     .addSubcommand(subcommand =>
       subcommand
