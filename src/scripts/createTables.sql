@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT NOT NULL,
   joined_at TIMESTAMP WITH TIME ZONE NOT NULL,
   last_voice_time TIMESTAMP WITH TIME ZONE,
+  last_camera_time TIMESTAMP WITH TIME ZONE,
   total_minutes INTEGER DEFAULT 0,
   week_start TIMESTAMP WITH TIME ZONE NOT NULL,
   warning_sent BOOLEAN DEFAULT FALSE,
@@ -77,6 +78,7 @@ COMMENT ON COLUMN users.user_id IS '디스코드 유저 ID';
 COMMENT ON COLUMN users.guild_id IS '디스코드 서버(길드) ID';
 COMMENT ON COLUMN users.joined_at IS '서버 가입 시간';
 COMMENT ON COLUMN users.last_voice_time IS '마지막 음성 채널 접속 시간';
+COMMENT ON COLUMN users.last_camera_time IS '마지막 카메라 사용 시간';
 COMMENT ON COLUMN users.total_minutes IS '전체 누적 음성 채널 시간 (분) - 절대 리셋되지 않음';
 COMMENT ON COLUMN users.week_start IS 'Kick Rule 시작 시점 (마지막 30분 달성 시각, 이후 7일간 유효)';
 COMMENT ON COLUMN users.warning_sent IS '경고 발송 여부';

@@ -25,7 +25,11 @@ class KickSettingsRepository {
         throw error;
       }
 
-      return data;
+      return {
+        ...data,
+        require_camera_on: data.require_camera_on ?? false,
+        require_voice_presence: data.require_voice_presence ?? false,
+      } as KickSettings;
     } catch (error) {
       logger.error(`Error fetching kick settings for guild ${guildId}`, error);
       return this.getDefaultSettings(guildId);
@@ -44,6 +48,8 @@ class KickSettingsRepository {
           kick_days: settings.kick_days,
           warning_days: settings.warning_days,
           required_minutes: settings.required_minutes,
+          require_camera_on: settings.require_camera_on,
+          require_voice_presence: settings.require_voice_presence,
         })
         .select()
         .single();
@@ -112,6 +118,8 @@ class KickSettingsRepository {
       kick_days: 7,
       warning_days: 6,
       required_minutes: 30,
+      require_camera_on: false,
+      require_voice_presence: false,
     };
   }
 }

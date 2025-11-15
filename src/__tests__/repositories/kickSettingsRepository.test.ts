@@ -11,8 +11,8 @@ vi.mock('../../utils/logger', () => ({
 
 // Mock Supabase
 const mockSingle = vi.fn();
-const mockSelect = vi.fn(() => ({ single: mockSingle }));
-const mockEq = vi.fn(() => ({ select: mockSelect }));
+const mockSelect = vi.fn(() => ({ eq: mockEq, single: mockSingle }));
+const mockEq = vi.fn(() => ({ select: mockSelect, single: mockSingle }));
 const mockUpsert = vi.fn(() => ({ select: mockSelect }));
 const mockUpdate = vi.fn(() => ({ eq: mockEq }));
 const mockDelete = vi.fn(() => ({ eq: mockEq }));
@@ -44,6 +44,8 @@ describe('KickSettingsRepository', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        require_camera_on: true,
+        require_voice_presence: false,
       };
 
       mockSingle.mockResolvedValueOnce({
@@ -52,7 +54,7 @@ describe('KickSettingsRepository', () => {
       });
 
       const result = await kickSettingsRepository.getSettings('test-guild');
-      
+
       expect(result).toEqual(mockSettings);
     });
 
@@ -69,6 +71,8 @@ describe('KickSettingsRepository', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        require_camera_on: false,
+        require_voice_presence: false,
       });
     });
 
@@ -82,6 +86,8 @@ describe('KickSettingsRepository', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        require_camera_on: false,
+        require_voice_presence: false,
       });
     });
   });
@@ -93,6 +99,8 @@ describe('KickSettingsRepository', () => {
         kick_days: 10,
         warning_days: 8,
         required_minutes: 60,
+        require_camera_on: true,
+        require_voice_presence: true,
       };
 
       mockSingle.mockResolvedValueOnce({
@@ -111,6 +119,8 @@ describe('KickSettingsRepository', () => {
         kick_days: 10,
         warning_days: 8,
         required_minutes: 60,
+        require_camera_on: true,
+        require_voice_presence: true,
       };
 
       mockSingle.mockResolvedValueOnce({
@@ -131,6 +141,8 @@ describe('KickSettingsRepository', () => {
         kick_days: 10,
         warning_days: 6,
         required_minutes: 30,
+        require_camera_on: false,
+        require_voice_presence: false,
       };
 
       mockSingle.mockResolvedValueOnce({

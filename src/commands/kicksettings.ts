@@ -47,6 +47,8 @@ async function handleView(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId!;
   const settings = await kickSettingsRepository.getSettings(guildId);
 
+  const formatToggle = (value: boolean) => (value ? '✅ 활성화' : '❌ 비활성화');
+
   const embed = new EmbedBuilder()
     .setColor(0x0099FF)
     .setTitle('⚙️ 킥 설정')
@@ -62,10 +64,20 @@ async function handleView(interaction: ChatInputCommandInteraction) {
         value: `${settings.warning_days}일`, 
         inline: true 
       },
-      { 
-        name: '⏱️ 필요 활동 시간', 
-        value: `${settings.required_minutes}분`, 
-        inline: true 
+      {
+        name: '⏱️ 필요 활동 시간',
+        value: `${settings.required_minutes}분`,
+        inline: true
+      },
+      {
+        name: '🎥 카메라 사용 필수',
+        value: formatToggle(settings.require_camera_on),
+        inline: true
+      },
+      {
+        name: '🔊 음성 채널 참여 필수',
+        value: formatToggle(settings.require_voice_presence),
+        inline: true
       }
     )
     .setFooter({ 
@@ -81,6 +93,8 @@ async function handleSet(interaction: ChatInputCommandInteraction) {
   const kickDays = interaction.options.getInteger('kick_days');
   const warningDays = interaction.options.getInteger('warning_days');
   const requiredMinutes = interaction.options.getInteger('required_minutes');
+  const requireCameraOn = interaction.options.getBoolean('require_camera_on');
+  const requireVoicePresence = interaction.options.getBoolean('require_voice_presence');
 
   // 유효성 검사 (먼저 진행)
   if (kickDays !== null && kickDays < 1) {
@@ -108,7 +122,13 @@ async function handleSet(interaction: ChatInputCommandInteraction) {
   }
 
   // 최소한 하나의 옵션은 제공되어야 함
-  if (kickDays === null && warningDays === null && requiredMinutes === null) {
+  if (
+    kickDays === null &&
+    warningDays === null &&
+    requiredMinutes === null &&
+    requireCameraOn === null &&
+    requireVoicePresence === null
+  ) {
     await interaction.reply({
       content: '최소한 하나의 설정 값을 지정해야 합니다.',
       ephemeral: true
@@ -135,6 +155,8 @@ async function handleSet(interaction: ChatInputCommandInteraction) {
     kick_days: kickDays ?? currentSettings.kick_days,
     warning_days: warningDays ?? currentSettings.warning_days,
     required_minutes: requiredMinutes ?? currentSettings.required_minutes,
+    require_camera_on: requireCameraOn ?? currentSettings.require_camera_on,
+    require_voice_presence: requireVoicePresence ?? currentSettings.require_voice_presence,
   };
 
   const updatedSettings = await kickSettingsRepository.upsertSettings(newSettings);
@@ -152,20 +174,30 @@ async function handleSet(interaction: ChatInputCommandInteraction) {
     .setTitle('✅ 설정이 변경되었습니다')
     .setDescription('킥 조건이 성공적으로 업데이트되었습니다.')
     .addFields(
-      { 
-        name: '🔴 강퇴 기준 일수', 
-        value: `${updatedSettings.kick_days}일`, 
-        inline: true 
+      {
+        name: '🔴 강퇴 기준 일수',
+        value: `${updatedSettings.kick_days}일`,
+        inline: true
       },
-      { 
-        name: '⚠️ 경고 기준 일수', 
-        value: `${updatedSettings.warning_days}일`, 
-        inline: true 
+      {
+        name: '⚠️ 경고 기준 일수',
+        value: `${updatedSettings.warning_days}일`,
+        inline: true
       },
-      { 
-        name: '⏱️ 필요 활동 시간', 
-        value: `${updatedSettings.required_minutes}분`, 
-        inline: true 
+      {
+        name: '⏱️ 필요 활동 시간',
+        value: `${updatedSettings.required_minutes}분`,
+        inline: true
+      },
+      {
+        name: '🎥 카메라 사용 필수',
+        value: updatedSettings.require_camera_on ? '✅ 활성화' : '❌ 비활성화',
+        inline: true
+      },
+      {
+        name: '🔊 음성 채널 참여 필수',
+        value: updatedSettings.require_voice_presence ? '✅ 활성화' : '❌ 비활성화',
+        inline: true
       }
     )
     .setTimestamp();
@@ -182,6 +214,8 @@ async function handleReset(interaction: ChatInputCommandInteraction) {
     kick_days: 7,
     warning_days: 6,
     required_minutes: 30,
+    require_camera_on: false,
+    require_voice_presence: false,
   };
 
   await kickSettingsRepository.upsertSettings(defaultSettings);
@@ -201,10 +235,20 @@ async function handleReset(interaction: ChatInputCommandInteraction) {
         value: '6일', 
         inline: true 
       },
-      { 
-        name: '⏱️ 필요 활동 시간', 
-        value: '30분', 
-        inline: true 
+      {
+        name: '⏱️ 필요 활동 시간',
+        value: '30분',
+        inline: true
+      },
+      {
+        name: '🎥 카메라 사용 필수',
+        value: '❌ 비활성화',
+        inline: true
+      },
+      {
+        name: '🔊 음성 채널 참여 필수',
+        value: '❌ 비활성화',
+        inline: true
       }
     )
     .setTimestamp();

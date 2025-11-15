@@ -34,6 +34,7 @@ describe('kicksettings command', () => {
       options: {
         getSubcommand: vi.fn(),
         getInteger: vi.fn(),
+        getBoolean: vi.fn(),
       } as any,
     } as any;
   });
@@ -46,6 +47,8 @@ describe('kicksettings command', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        require_camera_on: false,
+        require_voice_presence: false,
       });
 
       await kicksettingsCommand.execute(mockInteraction as ChatInputCommandInteraction);
@@ -73,6 +76,8 @@ describe('kicksettings command', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        require_camera_on: false,
+        require_voice_presence: false,
       });
     });
 
@@ -81,12 +86,15 @@ describe('kicksettings command', () => {
         if (name === 'kick_days') return 10;
         return null;
       });
+      (mockInteraction.options!.getBoolean as any).mockReturnValue(null);
 
       vi.mocked(kickSettingsRepository.upsertSettings).mockResolvedValue({
         guild_id: 'test-guild',
         kick_days: 10,
         warning_days: 6,
         required_minutes: 30,
+        require_camera_on: false,
+        require_voice_presence: false,
       });
 
       await kicksettingsCommand.execute(mockInteraction as ChatInputCommandInteraction);
@@ -96,6 +104,8 @@ describe('kicksettings command', () => {
         kick_days: 10,
         warning_days: 6,
         required_minutes: 30,
+        require_camera_on: false,
+        require_voice_presence: false,
       });
       expect(mockReply).toHaveBeenCalled();
     });
@@ -107,12 +117,15 @@ describe('kicksettings command', () => {
         if (name === 'required_minutes') return 60;
         return null;
       });
+      (mockInteraction.options!.getBoolean as any).mockReturnValue(null);
 
       vi.mocked(kickSettingsRepository.upsertSettings).mockResolvedValue({
         guild_id: 'test-guild',
         kick_days: 10,
         warning_days: 8,
         required_minutes: 60,
+        require_camera_on: false,
+        require_voice_presence: false,
       });
 
       await kicksettingsCommand.execute(mockInteraction as ChatInputCommandInteraction);
@@ -122,6 +135,37 @@ describe('kicksettings command', () => {
         kick_days: 10,
         warning_days: 8,
         required_minutes: 60,
+        require_camera_on: false,
+        require_voice_presence: false,
+      });
+    });
+
+    it('should update camera and voice requirements', async () => {
+      (mockInteraction.options!.getInteger as any).mockReturnValue(null);
+      (mockInteraction.options!.getBoolean as any).mockImplementation((name: string) => {
+        if (name === 'require_camera_on') return true;
+        if (name === 'require_voice_presence') return true;
+        return null;
+      });
+
+      vi.mocked(kickSettingsRepository.upsertSettings).mockResolvedValue({
+        guild_id: 'test-guild',
+        kick_days: 7,
+        warning_days: 6,
+        required_minutes: 30,
+        require_camera_on: true,
+        require_voice_presence: true,
+      });
+
+      await kicksettingsCommand.execute(mockInteraction as ChatInputCommandInteraction);
+
+      expect(kickSettingsRepository.upsertSettings).toHaveBeenCalledWith({
+        guild_id: 'test-guild',
+        kick_days: 7,
+        warning_days: 6,
+        required_minutes: 30,
+        require_camera_on: true,
+        require_voice_presence: true,
       });
     });
 
@@ -162,6 +206,7 @@ describe('kicksettings command', () => {
 
     it('should reject when no options provided', async () => {
       (mockInteraction.options!.getInteger as any).mockReturnValue(null);
+      (mockInteraction.options!.getBoolean as any).mockReturnValue(null);
 
       await kicksettingsCommand.execute(mockInteraction as ChatInputCommandInteraction);
 
@@ -182,6 +227,8 @@ describe('kicksettings command', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        require_camera_on: false,
+        require_voice_presence: false,
       });
 
       await kicksettingsCommand.execute(mockInteraction as ChatInputCommandInteraction);
@@ -191,6 +238,8 @@ describe('kicksettings command', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        require_camera_on: false,
+        require_voice_presence: false,
       });
       expect(mockReply).toHaveBeenCalledWith(
         expect.objectContaining({
