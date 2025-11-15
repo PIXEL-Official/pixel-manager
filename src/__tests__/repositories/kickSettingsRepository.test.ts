@@ -44,6 +44,7 @@ describe('KickSettingsRepository', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        required_camera_minutes: 0,
         require_camera_on: true,
         require_voice_presence: false,
       };
@@ -71,6 +72,7 @@ describe('KickSettingsRepository', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        required_camera_minutes: 0,
         require_camera_on: false,
         require_voice_presence: false,
       });
@@ -86,6 +88,7 @@ describe('KickSettingsRepository', () => {
         kick_days: 7,
         warning_days: 6,
         required_minutes: 30,
+        required_camera_minutes: 0,
         require_camera_on: false,
         require_voice_presence: false,
       });

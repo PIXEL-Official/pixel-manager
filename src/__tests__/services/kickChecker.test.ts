@@ -386,4 +386,180 @@ describe('KickChecker - Core Logic', () => {
       expect(result[1].meetsRequirement).toBe(true);
     });
   });
+
+  describe('Camera Minutes Requirement Logic', () => {
+    it('should kick user when camera minutes requirement is not met', async () => {
+      vi.spyOn(dateHelper, 'parseISODate').mockReturnValue(new Date('2025-01-01'));
+      vi.spyOn(dateHelper, 'hasDaysPassed').mockReturnValue(true);
+      vi.spyOn(dateHelper, 'isWarningTimeWithDays').mockReturnValue(false);
+      vi.spyOn(dateHelper, 'meetsRequirement').mockImplementation((mins, req) => mins >= req);
+      vi.spyOn(dateHelper, 'formatMinutes').mockReturnValue('35분');
+
+      // 음성 채널 30분 + 카메라 30분 필수
+      vi.mocked(kickSettingsRepository.getSettings).mockResolvedValue({
+        guild_id: testGuildId,
+        kick_days: 7,
+        warning_days: 6,
+        required_minutes: 30,
+        required_camera_minutes: 30,
+        require_camera_on: false,
+        require_voice_presence: true,
+      });
+
+      const mockUsers = [{
+        user_id: 'user-no-camera-time',
+        guild_id: testGuildId,
+        username: 'NoCameraTime',
+        joined_at: '2025-01-01T00:00:00Z',
+        last_voice_time: '2025-01-08T00:00:00Z',
+        total_minutes: 35,
+        camera_on_minutes: 10, // 30분 미달
+        week_start: '2025-01-01T00:00:00Z',
+        warning_sent: false,
+        status: 'active' as const,
+        last_message_time: null,
+        last_camera_time: '2025-01-05T00:00:00Z',
+      }];
+
+      vi.mocked(userRepository.getUsersToCheck).mockResolvedValue(mockUsers);
+      vi.spyOn(mockVoiceTracker, 'getCurrentCameraMinutes').mockReturnValue(0);
+      vi.spyOn(mockVoiceTracker, 'getCurrentSessionMinutes').mockReturnValue(0);
+
+      await kickChecker.refreshSettings();
+      await kickChecker.checkAndKickUsers();
+
+      expect(mockMember.kick).toHaveBeenCalled();
+      expect(userRepository.updateUser).toHaveBeenCalledWith(
+        'user-no-camera-time',
+        testGuildId,
+        { status: 'kicked' }
+      );
+    });
+
+    it('should NOT kick user when camera minutes requirement is met', async () => {
+      vi.spyOn(dateHelper, 'parseISODate').mockReturnValue(new Date('2025-01-01'));
+      vi.spyOn(dateHelper, 'hasDaysPassed').mockReturnValue(true);
+      vi.spyOn(dateHelper, 'isWarningTimeWithDays').mockReturnValue(false);
+      vi.spyOn(dateHelper, 'meetsRequirement').mockImplementation((mins, req) => mins >= req);
+
+      vi.mocked(kickSettingsRepository.getSettings).mockResolvedValue({
+        guild_id: testGuildId,
+        kick_days: 7,
+        warning_days: 6,
+        required_minutes: 30,
+        required_camera_minutes: 30,
+        require_camera_on: false,
+        require_voice_presence: true,
+      });
+
+      const mockUsers = [{
+        user_id: 'user-good-camera-time',
+        guild_id: testGuildId,
+        username: 'GoodCameraTime',
+        joined_at: '2025-01-01T00:00:00Z',
+        last_voice_time: '2025-01-08T00:00:00Z',
+        total_minutes: 35,
+        camera_on_minutes: 35, // 30분 이상
+        week_start: '2025-01-01T00:00:00Z',
+        warning_sent: false,
+        status: 'active' as const,
+        last_message_time: null,
+        last_camera_time: '2025-01-05T00:00:00Z',
+      }];
+
+      vi.mocked(userRepository.getUsersToCheck).mockResolvedValue(mockUsers);
+      vi.spyOn(mockVoiceTracker, 'getCurrentCameraMinutes').mockReturnValue(0);
+      vi.spyOn(mockVoiceTracker, 'getCurrentSessionMinutes').mockReturnValue(0);
+
+      await kickChecker.refreshSettings();
+      await kickChecker.checkAndKickUsers();
+
+      expect(mockMember.kick).not.toHaveBeenCalled();
+    });
+
+    it('should include current camera session in minutes calculation', async () => {
+      vi.spyOn(dateHelper, 'parseISODate').mockReturnValue(new Date('2025-01-01'));
+      vi.spyOn(dateHelper, 'hasDaysPassed').mockReturnValue(true);
+      vi.spyOn(dateHelper, 'isWarningTimeWithDays').mockReturnValue(false);
+      vi.spyOn(dateHelper, 'meetsRequirement').mockImplementation((mins, req) => mins >= req);
+
+      vi.mocked(kickSettingsRepository.getSettings).mockResolvedValue({
+        guild_id: testGuildId,
+        kick_days: 7,
+        warning_days: 6,
+        required_minutes: 30,
+        required_camera_minutes: 30,
+        require_camera_on: false,
+        require_voice_presence: true,
+      });
+
+      const mockUsers = [{
+        user_id: 'user-current-camera',
+        guild_id: testGuildId,
+        username: 'CurrentCamera',
+        joined_at: '2025-01-01T00:00:00Z',
+        last_voice_time: '2025-01-08T00:00:00Z',
+        total_minutes: 35,
+        camera_on_minutes: 20, // DB에 저장된 시간
+        week_start: '2025-01-01T00:00:00Z',
+        warning_sent: false,
+        status: 'active' as const,
+        last_message_time: null,
+        last_camera_time: '2025-01-05T00:00:00Z',
+      }];
+
+      vi.mocked(userRepository.getUsersToCheck).mockResolvedValue(mockUsers);
+      vi.spyOn(mockVoiceTracker, 'getCurrentSessionMinutes').mockReturnValue(10);
+      vi.spyOn(mockVoiceTracker, 'getCurrentCameraMinutes').mockReturnValue(15); // 현재 카메라 켠 시간
+
+      await kickChecker.refreshSettings();
+      await kickChecker.checkAndKickUsers();
+
+      // 20 + 15 = 35분으로 30분 이상이므로 강퇴되지 않아야 함
+      expect(mockMember.kick).not.toHaveBeenCalled();
+    });
+
+    it('should NOT check camera minutes when require_voice_presence is disabled', async () => {
+      vi.spyOn(dateHelper, 'parseISODate').mockReturnValue(new Date('2025-01-01'));
+      vi.spyOn(dateHelper, 'hasDaysPassed').mockReturnValue(true);
+      vi.spyOn(dateHelper, 'isWarningTimeWithDays').mockReturnValue(false);
+      vi.spyOn(dateHelper, 'meetsRequirement').mockImplementation((mins, req) => mins >= req);
+
+      // 음성 채널 룰이 비활성화되면 카메라 시간도 체크하지 않음
+      vi.mocked(kickSettingsRepository.getSettings).mockResolvedValue({
+        guild_id: testGuildId,
+        kick_days: 7,
+        warning_days: 6,
+        required_minutes: 30,
+        required_camera_minutes: 30,
+        require_camera_on: false,
+        require_voice_presence: false, // 비활성화
+      });
+
+      const mockUsers = [{
+        user_id: 'user-no-voice-rule',
+        guild_id: testGuildId,
+        username: 'NoVoiceRule',
+        joined_at: '2025-01-01T00:00:00Z',
+        last_voice_time: null,
+        total_minutes: 35,
+        camera_on_minutes: 0, // 카메라 시간 0
+        week_start: '2025-01-01T00:00:00Z',
+        warning_sent: false,
+        status: 'active' as const,
+        last_message_time: null,
+        last_camera_time: null,
+      }];
+
+      vi.mocked(userRepository.getUsersToCheck).mockResolvedValue(mockUsers);
+      vi.spyOn(mockVoiceTracker, 'getCurrentCameraMinutes').mockReturnValue(0);
+      vi.spyOn(mockVoiceTracker, 'getCurrentSessionMinutes').mockReturnValue(0);
+
+      await kickChecker.refreshSettings();
+      await kickChecker.checkAndKickUsers();
+
+      // 음성 채널 룰이 비활성화되어 있으므로 카메라 시간도 체크하지 않음
+      expect(mockMember.kick).not.toHaveBeenCalled();
+    });
+  });
 });

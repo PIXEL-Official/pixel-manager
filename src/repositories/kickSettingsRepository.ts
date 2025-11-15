@@ -27,6 +27,7 @@ class KickSettingsRepository {
 
       return {
         ...data,
+        required_camera_minutes: data.required_camera_minutes ?? 0,
         require_camera_on: data.require_camera_on ?? false,
         require_voice_presence: data.require_voice_presence ?? false,
       } as KickSettings;
@@ -48,6 +49,7 @@ class KickSettingsRepository {
           kick_days: settings.kick_days,
           warning_days: settings.warning_days,
           required_minutes: settings.required_minutes,
+          required_camera_minutes: settings.required_camera_minutes,
           require_camera_on: settings.require_camera_on,
           require_voice_presence: settings.require_voice_presence,
         })
@@ -118,6 +120,7 @@ class KickSettingsRepository {
       kick_days: 7,
       warning_days: 6,
       required_minutes: 30,
+      required_camera_minutes: 0,
       require_camera_on: false,
       require_voice_presence: false,
     };

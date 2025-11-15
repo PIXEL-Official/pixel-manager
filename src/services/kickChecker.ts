@@ -47,18 +47,31 @@ export class KickChecker {
     user: User,
     settings: KickSettings,
     totalMinutes: number,
+    cameraMinutes: number,
     referenceDate: Date
   ) {
     const meetsMinutes = meetsRequirement(totalMinutes, settings.required_minutes);
     const meetsVoice = !settings.require_voice_presence || user.last_voice_time !== null;
-    const meetsCamera =
-      !settings.require_camera_on ||
-      (user.last_camera_time ? parseISODate(user.last_camera_time) >= referenceDate : false);
+    
+    // 카메라 체크는 음성 채널 룰이 활성화되어 있을 때만 적용
+    let meetsCamera = true;
+    if (settings.require_voice_presence) {
+      // require_camera_on (레거시): 최소 한 번 카메라를 켰는지 확인
+      const meetsCameraUsage = !settings.require_camera_on ||
+        (user.last_camera_time ? parseISODate(user.last_camera_time) >= referenceDate : false);
+      
+      // required_camera_minutes: 카메라 켠 최소 시간 충족 확인
+      const meetsCameraTime = meetsRequirement(cameraMinutes, settings.required_camera_minutes);
+      
+      meetsCamera = meetsCameraUsage && meetsCameraTime;
+    }
 
     return {
       meetsMinutes,
       meetsVoice,
       meetsCamera,
+      meetsCameraTime: settings.require_voice_presence ? 
+        meetsRequirement(cameraMinutes, settings.required_camera_minutes) : true,
       meetsAll: meetsMinutes && meetsVoice && meetsCamera,
     };
   }
@@ -83,10 +96,16 @@ export class KickChecker {
 
         const currentSessionMinutes = this.voiceTracker.getCurrentSessionMinutes(user.user_id);
         const actualTotalMinutes = user.total_minutes + currentSessionMinutes;
+        
+        // 현재 세션에서 카메라 켠 시간 계산
+        const currentCameraMinutes = this.voiceTracker.getCurrentCameraMinutes(user.user_id);
+        const actualCameraMinutes = user.camera_on_minutes + currentCameraMinutes;
+        
         const requirementStatus = this.evaluateRequirements(
           user as User,
           settings,
           actualTotalMinutes,
+          actualCameraMinutes,
           referenceDate
         );
 
@@ -103,6 +122,7 @@ export class KickChecker {
             user.user_id,
             user.username,
             actualTotalMinutes,
+            actualCameraMinutes,
             settings,
             requirementStatus
           );
@@ -120,6 +140,7 @@ export class KickChecker {
             user.user_id,
             user.username,
             actualTotalMinutes,
+            actualCameraMinutes,
             referenceDate,
             settings,
             requirementStatus
@@ -148,9 +169,10 @@ export class KickChecker {
     userId: string,
     username: string,
     totalMinutes: number,
+    cameraMinutes: number,
     referenceDate: Date,
     settings: KickSettings,
-    requirements: { meetsMinutes: boolean; meetsVoice: boolean; meetsCamera: boolean }
+    requirements: { meetsMinutes: boolean; meetsVoice: boolean; meetsCamera: boolean; meetsCameraTime: boolean }
   ): Promise<boolean> {
     try {
       const guild = await this.client.guilds.fetch(this.guildId);
@@ -180,6 +202,15 @@ export class KickChecker {
 
       if (settings.require_camera_on && !requirements.meetsCamera) {
         details.push('- 추적된 음성 채널에서 카메라 사용 기록이 필요합니다.');
+      }
+
+      if (settings.required_camera_minutes > 0 && !requirements.meetsCameraTime) {
+        const cameraNeeded = Math.max(0, settings.required_camera_minutes - cameraMinutes);
+        details.push(
+          `- 현재 카메라 켠 시간: ${formatMinutes(cameraMinutes)}`,
+          `- 필요 시간: ${settings.required_camera_minutes}분`,
+          `- 부족한 시간: ${formatMinutes(cameraNeeded)}`
+        );
       }
 
       const detailsText = details.length > 0
@@ -216,8 +247,9 @@ ${detailsText}
     userId: string,
     username: string,
     totalMinutes: number,
+    cameraMinutes: number,
     settings: KickSettings,
-    requirements: { meetsMinutes: boolean; meetsVoice: boolean; meetsCamera: boolean }
+    requirements: { meetsMinutes: boolean; meetsVoice: boolean; meetsCamera: boolean; meetsCameraTime: boolean }
   ): Promise<boolean> {
     try {
       const guild = await this.client.guilds.fetch(this.guildId);
@@ -238,6 +270,9 @@ ${detailsText}
       if (settings.require_camera_on && !requirements.meetsCamera) {
         reasons.push('카메라 사용 이력 부족');
       }
+      if (settings.required_camera_minutes > 0 && !requirements.meetsCameraTime) {
+        reasons.push(`카메라 켠 시간 미달 (${formatMinutes(cameraMinutes)} / ${settings.required_camera_minutes}분)`);
+      }
       const kickReason = reasons.join(' | ') || '설정된 조건 미충족';
 
       // 강퇴 전 DM 발송 시도
@@ -254,6 +289,12 @@ ${detailsText}
         }
         if (settings.require_camera_on && !requirements.meetsCamera) {
           kickDetails.push('- 카메라 사용 기록이 확인되지 않았습니다.');
+        }
+        if (settings.required_camera_minutes > 0 && !requirements.meetsCameraTime) {
+          kickDetails.push(
+            `- 최종 카메라 켠 시간: ${formatMinutes(cameraMinutes)}`,
+            `- 필요 시간: ${settings.required_camera_minutes}분`
+          );
         }
 
         const detailText = kickDetails.length > 0
@@ -310,10 +351,15 @@ ${detailText}
 
       const currentSessionMinutes = this.voiceTracker.getCurrentSessionMinutes(user.user_id);
       const actualTotalMinutes = user.total_minutes + currentSessionMinutes;
+      
+      const currentCameraMinutes = this.voiceTracker.getCurrentCameraMinutes(user.user_id);
+      const actualCameraMinutes = user.camera_on_minutes + currentCameraMinutes;
+      
       const requirements = this.evaluateRequirements(
         user as User,
         settings,
         actualTotalMinutes,
+        actualCameraMinutes,
         referenceDate
       );
 
@@ -322,6 +368,7 @@ ${detailText}
           user.user_id,
           user.username,
           actualTotalMinutes,
+          actualCameraMinutes,
           settings,
           requirements
         );
@@ -336,6 +383,7 @@ ${detailText}
           user.user_id,
           user.username,
           actualTotalMinutes,
+          actualCameraMinutes,
           referenceDate,
           settings,
           requirements
@@ -388,11 +436,15 @@ ${detailText}
       const currentSessionMinutes = this.voiceTracker.getCurrentSessionMinutes(user.user_id);
       const actualTotalMinutes = user.total_minutes + currentSessionMinutes;
 
+      const currentCameraMinutes = this.voiceTracker.getCurrentCameraMinutes(user.user_id);
+      const actualCameraMinutes = user.camera_on_minutes + currentCameraMinutes;
+
       const daysUntilDeadline = getDaysUntilDeadlineWithDays(referenceDate, settings.kick_days);
       const requirementStatus = this.evaluateRequirements(
         user as User,
         settings,
         actualTotalMinutes,
+        actualCameraMinutes,
         referenceDate
       );
 
@@ -400,12 +452,16 @@ ${detailText}
         userId: user.user_id,
         username: user.username,
         totalMinutes: user.total_minutes,
+        cameraOnMinutes: user.camera_on_minutes,
         currentSessionMinutes,
+        currentCameraMinutes,
         actualTotalMinutes,
+        actualCameraMinutes,
         status: user.status,
         daysUntilDeadline,
         meetsRequirement: requirementStatus.meetsAll,
         meetsCameraRequirement: requirementStatus.meetsCamera,
+        meetsCameraTimeRequirement: requirementStatus.meetsCameraTime,
         meetsVoiceRequirement: requirementStatus.meetsVoice,
         referenceDate,
         lastVoiceTime: user.last_voice_time,

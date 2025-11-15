@@ -7,6 +7,7 @@ export interface User {
   last_message_time: string | null; // ISO timestamp
   last_camera_time: string | null; // ISO timestamp
   total_minutes: number;
+  camera_on_minutes: number; // Total minutes with camera on in voice channels
   week_start: string; // ISO timestamp
   warning_sent: boolean;
   status: 'active' | 'warned' | 'kicked';
@@ -68,6 +69,7 @@ export interface KickSettings {
   kick_days: number;
   warning_days: number;
   required_minutes: number;
+  required_camera_minutes: number; // Minimum minutes required with camera on (0 = no requirement)
   require_camera_on: boolean;
   require_voice_presence: boolean;
   created_at?: string;

@@ -10,6 +10,7 @@ interface ActiveVoiceSession {
   joinTime: Date;
   channelId: string;
   cameraOn: boolean;
+  cameraOnStartTime: Date | null; // When camera was turned on (null if camera is off)
 }
 
 // 현재 음성 채널에 있는 유저들의 입장 시간과 카메라 상태를 추적
@@ -99,12 +100,25 @@ export class VoiceTracker {
     // 카메라 상태 업데이트 (동일 채널 내에서 변경될 수 있음)
     const session = activeVoiceSessions.get(userId);
     if (isInTrackedChannel && session && session.cameraOn !== (newState.selfVideo ?? false)) {
-      session.cameraOn = newState.selfVideo ?? false;
-      activeVoiceSessions.set(userId, session);
+      const now = new Date();
+      const wasCameraOn = session.cameraOn;
+      const isCameraOn = newState.selfVideo ?? false;
 
-      if (session.cameraOn) {
+      // 카메라를 끄는 경우: 카메라 켠 시간 기록
+      if (wasCameraOn && !isCameraOn && session.cameraOnStartTime) {
+        const cameraMinutes = calculateMinutesBetween(session.cameraOnStartTime, now);
+        await this.addCameraMinutes(userId, guildId, cameraMinutes);
+        session.cameraOn = false;
+        session.cameraOnStartTime = null;
+      }
+      // 카메라를 켜는 경우: 시작 시간 기록
+      else if (!wasCameraOn && isCameraOn) {
+        session.cameraOn = true;
+        session.cameraOnStartTime = now;
         await this.recordCameraUsage(userId, guildId);
       }
+
+      activeVoiceSessions.set(userId, session);
     }
   }
 
@@ -123,6 +137,7 @@ export class VoiceTracker {
       joinTime: now,
       channelId,
       cameraOn,
+      cameraOnStartTime: cameraOn ? now : null, // 카메라 켜고 입장하면 시작 시간 기록
     });
     logger.voiceJoin(userId, username, channelId);
 
@@ -152,6 +167,12 @@ export class VoiceTracker {
 
     const now = new Date();
     const durationMinutes = calculateMinutesBetween(session.joinTime, now);
+
+    // 카메라 켜고 있었다면 카메라 시간도 기록
+    if (session.cameraOn && session.cameraOnStartTime) {
+      const cameraMinutes = calculateMinutesBetween(session.cameraOnStartTime, now);
+      await this.addCameraMinutes(userId, guildId, cameraMinutes);
+    }
 
     // 세션 기록
     await voiceSessionRepository.createSession({
@@ -197,6 +218,20 @@ export class VoiceTracker {
   }
 
   /**
+   * 카메라 켠 시간 누적
+   */
+  private async addCameraMinutes(userId: string, guildId: string, minutes: number): Promise<void> {
+    const user = await userRepository.getUserById(userId, guildId);
+    if (user) {
+      const newCameraMinutes = user.camera_on_minutes + minutes;
+      await userRepository.updateUser(userId, guildId, {
+        camera_on_minutes: newCameraMinutes,
+      });
+      logger.info(`User ${userId} camera minutes: +${minutes} (total: ${newCameraMinutes})`);
+    }
+  }
+
+  /**
    * 새 멤버를 DB에 추가
    */
   async addNewMember(userId: string, guildId: string, username: string, joinedAt: Date): Promise<void> {
@@ -217,6 +252,7 @@ export class VoiceTracker {
       last_message_time: null,
       last_camera_time: null,
       total_minutes: 0,
+      camera_on_minutes: 0,
       week_start: weekStart.toISOString(),
       warning_sent: false,
       status: 'active',
@@ -244,10 +280,12 @@ export class VoiceTracker {
       if (this.isTrackedChannel(channelId) && channel.isVoiceBased()) {
         // 해당 채널의 멤버들 순회
         for (const [userId, member] of channel.members) {
+          const cameraOn = member.voice?.selfVideo ?? false;
           activeVoiceSessions.set(userId, {
             joinTime: now,
             channelId,
-            cameraOn: member.voice?.selfVideo ?? false,
+            cameraOn,
+            cameraOnStartTime: cameraOn ? now : null,
           });
           count++;
         }
@@ -281,6 +319,18 @@ export class VoiceTracker {
 
     const now = new Date();
     return calculateMinutesBetween(session.joinTime, now);
+  }
+
+  /**
+   * 특정 유저의 현재 세션에서 카메라 켠 시간(분) 계산
+   * 카메라가 꺼져 있거나 접속 중이 아니면 0 반환
+   */
+  getCurrentCameraMinutes(userId: string): number {
+    const session = activeVoiceSessions.get(userId);
+    if (!session || !session.cameraOn || !session.cameraOnStartTime) return 0;
+
+    const now = new Date();
+    return calculateMinutesBetween(session.cameraOnStartTime, now);
   }
 
   /**
